@@ -9,4 +9,5 @@ pluginManagement {
 	}
 }
 
-rootProject.name = 'shareware-hud'
+// Should match your modid
+rootProject.name = 'entitymorph'

@@ -1,56 +1,53 @@
-# Shareware HUD (Fabric, Minecraft 26.3)
+# Entity Morph (Fabric, Minecraft 26.3, client-only)
 
-Brings back the HUD from the 2019 April Fools' version **Java Edition 3D Shareware v1.34**
-("MineCraft 3D: Memory Block Edition").
+Render any player or entity — including yourself — as a different entity model, with a custom skin.
+Everything is local: other players see nothing, and no server mod is needed.
 
-```
-+------------+-------+---------+-----------+
-| [heart] 10 |       | beef 12 | [1][2][3] |
-| [armor] 20 | (you) | ======= | [4][5][6] |
-| [horse] 15 |       |  [OH]   | [7][8][9] |
-+------------+-------+---------+-----------+
-```
+## Using it
 
-- **3x3 hotbar** — slot 1 top-left through slot 9 bottom-right; keys 1–9 and scrolling work as normal.
-- **Player portrait** — your live player model (skin, armour, held item, hurt flash), head glancing left and right at random.
-- **Vitals** — one block with your hearts, armour points, and the hearts of whatever you're riding, each as a number next to its icon. Absorption turns the heart number gold.
-- **Status column** — raw beef on a bone that drains as you get hungry (a compass in Creative), your XP level, and three thin meters: XP (green), air (blue, only underwater), horse jump charge (orange, only when riding something that jumps). Offhand slot underneath.
-- Held-item name and action-bar messages move up above the panel.
-- Can be switched off entirely from the settings to get the vanilla HUD back.
+- **M** (rebindable, *Entity Morph* category) opens the editor for the living entity under your crosshair, or for yourself if you're not looking at one.
+- A second, unbound key opens **All saved** — every morph saved for the current world/server, with Edit (if the entity is loaded) and Delete.
 
-## Requirements
-Minecraft 26.3, Fabric Loader 0.19.5+, Fabric API 0.161.0+26.3, Java 25. Client-side only.
+In the editor:
+
+| Control | What it does |
+|---|---|
+| Search + scrolling mob list | Pick any client-creatable living entity, **Player**, or **Original model** (mouse wheel / scrollbar) |
+| Look | Everything that mob supports: variants (fox type, wolf variant/collar/sound, cat, axolotl, parrot, frog, rabbit, horse, llama, sheep colour, tropical fish pattern/colours, villager type, …) and states (tamed, sitting, angry, aggressive, sheared, sleeping, begging, chest, charged, …). Also works on the entity's own model, e.g. turn a red fox into a snow fox |
+| Skin | Default · Player name (downloads that account's skin) · Skin file (PNG in the skins folder) · Texture id (e.g. `minecraft:textures/entity/zombie/husk.png`) |
+| Load / Next file | Apply or reload the typed value; cycle through PNGs in the skins folder |
+| Arms | Auto / Wide / Slim for player models (also first person) |
+| Save / Reset / Cancel | Edits preview live in the world and in the doll; only Save writes them |
+
+## Where things are saved
+
+- `config/entitymorph/worlds/<world folder>.json` (singleplayer)
+- `config/entitymorph/servers/<address>.json` (multiplayer)
+- `config/entitymorph/skins/` — drop skin PNGs here (64×64 or legacy 64×32; a name containing `slim`/`alex` defaults to slim arms)
+
+Entries are keyed by entity UUID, so a named pet or a player keeps its morph across sessions on that world/server.
+
+## What changes where
+
+- **World / F5:** the entity is swapped for a client-only proxy of the chosen type at render-state extraction; position, rotation, head/body yaw, walk animation, swing, hurt/death, pose, sneaking, sprinting, swimming, fire, glowing, invisibility, held items and armor are copied every frame. Name tags carry over.
+- **Inventory & creative inventory:** the paper-doll uses the morph.
+- **First person:** with a player model, your arm uses the chosen skin and arm width. With a non-player model, the bare arm is hidden (held items still render).
+- **Texture swaps on non-player models** apply to the main model texture; layers with their own textures (sheep wool, armor, glow eyes) keep theirs.
 
 ## Building
-JDK 25 required.
 
 ```
 ./gradlew build
 ```
-The jar is in `build/libs/shareware-hud-1.2.0.jar`. Put it in `.minecraft/mods` alongside Fabric API.
 
-No local JDK? Push this folder to a GitHub repo — the included workflow builds the jar and
-uploads it as an artifact on the Actions tab.
+Needs JDK 25. Output: `build/libs/entitymorph-1.0.0.jar`. Requires Fabric Loader ≥ 0.19.5 and Fabric API for 26.3.
 
-To test in a dev client: `./gradlew runClient`.
+## Hooks (for maintenance)
 
-## Settings
-With Mod Menu installed: **Mods → Shareware HUD → Configure**. Changes apply straight away and
-save when you press Done. Without Mod Menu, edit `config/sharewarehud.json` and restart.
-
-| Setting | Key | Default | What it does |
-|---|---|---|---|
-| Shareware HUD on/off | `enabled` | `true` | Off restores the normal vanilla HUD. |
-| HUD size | `hudScale` | `1.0` | Panel size relative to your GUI scale. `1.0` = same as GUI scale; slide down to 25% to shrink it. |
-| HUD opacity | `hudOpacity` | `1.0` | Fades numbers, icons, meters and the selection box. Items and the portrait can't be faded by the game's GUI renderer, so they stay solid (and hide at 0%). |
-| Background | `backgroundOpacity` | `1.0` | Fades the grey frame, section boxes and slot backgrounds. |
-| XP | `experienceStyle` | `PANEL` | `PANEL`: level + meter in the panel. `VANILLA`: normal XP bar above the panel (also brings back the locator bar). `HIDDEN`: no XP, like the original. |
-| Portrait zoom | `portraitScale` | `42` | Size of the player in the portrait box. |
-| Portrait framing | `portraitYOffset` | `0.55` | Raise to show more head, lower to show more body. |
-| Head turning | `portraitLooksAround` | `true` | Random head glances. |
-| Item counts | `showItemDecorations` | `true` | Stack counts and durability bars on hotbar items. |
-
-## How it works
-No mixins. It uses Fabric API's `HudElementRegistry` to replace the vanilla `HOTBAR` element with
-the panel, blank out the vanilla health/armour/food/air/mount bars, and translate the elements that sit
-above the hotbar.
+| Mixin | Target |
+|---|---|
+| `EntityRenderDispatcherMixin` | `extractEntity(Entity, float)` — swaps in the proxy |
+| `InventoryScreenMixin` | `extractEntityInInventoryFollowsMouse` — swaps in the proxy |
+| `AvatarRendererMixin` | `extractRenderState` (skin), `renderRightHand`/`renderLeftHand` (first-person) |
+| `EntityRendererMixin` | `extractRenderState` — tags the state with the texture override |
+| `LivingEntityRendererMixin` | `getRenderType` — applies the texture override (`require = 0`) |

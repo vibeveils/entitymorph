@@ -48,11 +48,28 @@ public final class Appearance {
 
 	/** One choosable component: values are stored as strings (enum name or registry id). */
 	public record ComponentOption(String id, String label, List<String> values, List<String> labels,
-								  Function<String, @Nullable Object> decoder) {
-		public String labelFor(@Nullable String value) {
-			if (value == null) return "Default";
-			int i = values.indexOf(value);
-			return i < 0 ? value : labels.get(i);
+								  String defaultValue, Function<String, @Nullable Object> decoder) {
+		/** The value currently in effect: the chosen one, or what the mob spawns with. */
+		public String effective(@Nullable String chosen) {
+			return chosen != null && values.contains(chosen) ? chosen : defaultValue;
+		}
+
+		public String labelFor(@Nullable String chosen) {
+			String v = effective(chosen);
+			int i = values.indexOf(v);
+			return i < 0 ? v : labels.get(i);
+		}
+
+		/** Next value, wrapping around (there is no "default" entry). */
+		public String next(@Nullable String chosen) {
+			int i = values.indexOf(effective(chosen));
+			return values.get((i + 1) % values.size());
+		}
+
+		/** Main variant pickers (fox type, wolf variant, sound) sort before colours/collars. */
+		public boolean isPrimary() {
+			String l = label.toLowerCase(Locale.ROOT);
+			return l.contains("variant") || l.contains("type") || l.contains("size");
 		}
 	}
 
@@ -136,7 +153,8 @@ public final class Appearance {
 					labels.add(pretty(c instanceof StringRepresentable sr ? sr.getSerializedName() : ((Enum<?>) c).name()));
 				}
 				Class enumClass = en.getDeclaringClass();
-				out.add(new ComponentOption(id.toString(), label, values, labels, s -> {
+				if (values.size() < 2) continue;
+				out.add(new ComponentOption(id.toString(), label, values, labels, en.name(), s -> {
 					try {
 						return Enum.valueOf(enumClass, s);
 					} catch (Exception ex) {
@@ -155,7 +173,9 @@ public final class Appearance {
 					values.add(vid.toString());
 					labels.add(pretty(vid.getPath()));
 				}
-				out.add(new ComponentOption(id.toString(), label, values, labels, s -> {
+				Identifier current = registry.getKey(holder.value());
+				String def = current != null ? current.toString() : values.get(0);
+				out.add(new ComponentOption(id.toString(), label, values, labels, def, s -> {
 					try {
 						Object v = registry.getValue(Identifier.parse(s));
 						return v == null ? null : registry.wrapAsHolder(v);
@@ -201,7 +221,11 @@ public final class Appearance {
 	// ------------------------------------------------------------------ flags
 
 	/** An on/off look. {@code methods} are tried in order; the first that exists marks it supported. */
-	public record Flag(String id, String label, Call... calls) {
+	public record Flag(String id, String label, java.util.Set<String> onlyFor, Call... calls) {
+	}
+
+	private static Flag flag(String id, String label, Call... calls) {
+		return new Flag(id, label, java.util.Set.of(), calls);
 	}
 
 	/** A setter call to try: method name, argument types and the arguments for "on". */
@@ -212,30 +236,33 @@ public final class Appearance {
 	}
 
 	public static final List<Flag> FLAGS = List.of(
-			new Flag("tamed", "Tamed",
+			flag("tamed", "Tamed",
 					new Call("setTame", new Class<?>[]{boolean.class, boolean.class}, new Object[]{true, false}),
 					Call.of("setTame", true)),
-			new Flag("sitting", "Sitting",
+			flag("sitting", "Sitting",
 					Call.of("setInSittingPose", true), Call.of("setOrderedToSit", true),
 					Call.of("setSitting", true), Call.of("sit", true)),
-			new Flag("angry", "Angry",
+			flag("angry", "Angry",
 					new Call("setRemainingPersistentAngerTime", new Class<?>[]{int.class}, new Object[]{Integer.MAX_VALUE / 2}),
 					new Call("setPersistentAngerEndTime", new Class<?>[]{long.class}, new Object[]{Long.MAX_VALUE / 2}),
 					Call.of("setAngry", true), Call.of("setCreepy", true)),
-			new Flag("aggressive", "Aggressive", Call.of("setAggressive", true)),
-			new Flag("sheared", "Sheared", Call.of("setSheared", true)),
-			new Flag("no_pumpkin", "No pumpkin", Call.of("setPumpkin", false)),
-			new Flag("sleeping", "Sleeping", Call.of("setSleeping", true)),
-			new Flag("lying", "Lying down", Call.of("setLying", true)),
-			new Flag("interested", "Begging / curious", Call.of("setIsInterested", true)),
-			new Flag("crouching", "Crouching", Call.of("setIsCrouching", true)),
-			new Flag("chest", "Chest", Call.of("setChest", true)),
-			new Flag("screaming", "Screaming", Call.of("setScreamingGoat", true)),
-			new Flag("playing_dead", "Playing dead", Call.of("setPlayingDead", true)),
-			new Flag("charged", "Charged", Call.of("setPowered", true)),
-			new Flag("puffed", "Puffed up", new Call("setPuffState", new Class<?>[]{int.class}, new Object[]{2})),
-			new Flag("dancing", "Dancing", Call.of("setDancing", true)),
-			new Flag("hiding", "Peeking (closed)", new Call("setRawPeekAmount", new Class<?>[]{int.class}, new Object[]{0}))
+			// Every Mob has setAggressive, but only these models actually show it (raised arms, aiming, charging).
+			new Flag("aggressive", "Aggressive",
+					java.util.Set.of("Zombie", "AbstractSkeleton", "AbstractIllager", "AbstractPiglin", "Giant"),
+					Call.of("setAggressive", true)),
+			flag("sheared", "Sheared", Call.of("setSheared", true)),
+			flag("no_pumpkin", "No pumpkin", Call.of("setPumpkin", false)),
+			flag("sleeping", "Sleeping", Call.of("setSleeping", true)),
+			flag("lying", "Lying down", Call.of("setLying", true)),
+			flag("interested", "Begging / curious", Call.of("setIsInterested", true)),
+			flag("crouching", "Crouching", Call.of("setIsCrouching", true)),
+			flag("chest", "Chest", Call.of("setChest", true)),
+			flag("screaming", "Screaming", Call.of("setScreamingGoat", true)),
+			flag("playing_dead", "Playing dead", Call.of("setPlayingDead", true)),
+			flag("charged", "Charged", Call.of("setPowered", true)),
+			flag("puffed", "Puffed up", new Call("setPuffState", new Class<?>[]{int.class}, new Object[]{2})),
+			flag("dancing", "Dancing", Call.of("setDancing", true)),
+			flag("hiding", "Peeking (closed)", new Call("setRawPeekAmount", new Class<?>[]{int.class}, new Object[]{0}))
 	);
 
 	private static final Map<String, List<Flag>> FLAG_CACHE = new HashMap<>();
@@ -244,6 +271,7 @@ public final class Appearance {
 		return FLAG_CACHE.computeIfAbsent(model, k -> {
 			List<Flag> out = new ArrayList<>();
 			for (Flag f : FLAGS) {
+				if (!f.onlyFor().isEmpty() && !isA(sample.getClass(), f.onlyFor())) continue;
 				for (Call c : f.calls()) {
 					if (findMethod(sample.getClass(), c.method(), c.types()) != null) {
 						out.add(f);
@@ -257,6 +285,13 @@ public final class Appearance {
 			}
 			return Collections.unmodifiableList(out);
 		});
+	}
+
+	private static boolean isA(Class<?> c, java.util.Set<String> simpleNames) {
+		for (Class<?> k = c; k != null && k != Object.class; k = k.getSuperclass()) {
+			if (simpleNames.contains(k.getSimpleName())) return true;
+		}
+		return false;
 	}
 
 	private static @Nullable Method findMethod(Class<?> c, String name, Class<?>[] types) {

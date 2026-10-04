@@ -157,26 +157,29 @@ public class MorphEditorScreen extends Screen {
 		List<Item> items = new ArrayList<>();
 
 		items.add((x, y, w) -> toggle(x, y, w, "Baby", draft.baby, () -> draft.baby = !draft.baby));
+		if (draft.hasModel()) items.add((x, y, w) -> Button.builder(Component.literal("Size: " + draft.fit.label), b -> {
+					draft.fit = draft.fit.next();
+					changed();
+					rebuildWidgets();
+				}).pos(x, y).size(w, 20)
+				.tooltip(Tooltip.create(Component.literal("Normal size, or scale the model so its height / eye height matches the real entity's hitbox")))
+				.build());
 
 		if (sample != null) {
-			for (Appearance.ComponentOption opt : Appearance.componentsFor(model, sample)) {
-				items.add((x, y, w) -> {
-					String current = draft.components.get(opt.id());
-					Button b = Button.builder(Component.literal(opt.label() + ": " + opt.labelFor(current)), btn -> {
-								String next = cycle(opt.values(), current);
-								if (next == null) draft.components.remove(opt.id());
-								else draft.components.put(opt.id(), next);
-								changed();
-								rebuildWidgets();
-							}).pos(x, y).size(w, 20).build();
-					b.setTooltip(Tooltip.create(Component.literal(opt.id() + " · click to cycle (" + opt.values().size() + " options)")));
-					return b;
-				});
+			List<Appearance.ComponentOption> comps = Appearance.componentsFor(model, sample);
+			List<Appearance.Flag> flags = Appearance.flagsFor(model, sample);
+			// Order: main variants, then Tamed, then collars/colours, then the other states.
+			for (Appearance.ComponentOption opt : comps) {
+				if (opt.isPrimary()) items.add(componentItem(opt));
 			}
-			for (Appearance.Flag flag : Appearance.flagsFor(model, sample)) {
-				items.add((x, y, w) -> toggle(x, y, w, flag.label(), draft.flags.contains(flag.id()), () -> {
-					if (!draft.flags.remove(flag.id())) draft.flags.add(flag.id());
-				}));
+			for (Appearance.Flag flag : flags) {
+				if (flag.id().equals("tamed")) items.add(flagItem(flag));
+			}
+			for (Appearance.ComponentOption opt : comps) {
+				if (!opt.isPrimary()) items.add(componentItem(opt));
+			}
+			for (Appearance.Flag flag : flags) {
+				if (!flag.id().equals("tamed")) items.add(flagItem(flag));
 			}
 		}
 
@@ -207,19 +210,31 @@ public class MorphEditorScreen extends Screen {
 		}
 	}
 
+	private Item componentItem(Appearance.ComponentOption opt) {
+		return (x, y, w) -> {
+			String current = draft.components.get(opt.id());
+			Button b = Button.builder(Component.literal(opt.label() + ": " + opt.labelFor(current)), btn -> {
+				draft.components.put(opt.id(), opt.next(current));
+				changed();
+				rebuildWidgets();
+			}).pos(x, y).size(w, 20).build();
+			b.setTooltip(Tooltip.create(Component.literal("Click to cycle · " + opt.values().size() + " options")));
+			return b;
+		};
+	}
+
+	private Item flagItem(Appearance.Flag flag) {
+		return (x, y, w) -> toggle(x, y, w, flag.label(), draft.flags.contains(flag.id()), () -> {
+			if (!draft.flags.remove(flag.id())) draft.flags.add(flag.id());
+		});
+	}
+
 	private Button toggle(int x, int y, int w, String label, boolean on, Runnable flip) {
 		return Button.builder(Component.literal(label + ": " + (on ? "On" : "Off")), b -> {
 			flip.run();
 			changed();
 			rebuildWidgets();
 		}).pos(x, y).size(w, 20).build();
-	}
-
-	/** Next value after {@code current}; after the last value comes null ("Default"). */
-	private static @Nullable String cycle(List<String> values, @Nullable String current) {
-		if (current == null) return values.isEmpty() ? null : values.get(0);
-		int i = values.indexOf(current);
-		return i < 0 || i + 1 >= values.size() ? null : values.get(i + 1);
 	}
 
 	private void pickModel(String model) {

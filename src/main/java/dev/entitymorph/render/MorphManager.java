@@ -20,6 +20,10 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.AgeableMob;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityDimensions;
+import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntityTypes;
@@ -86,6 +90,7 @@ public final class MorphManager {
 		BUSY.set(true);
 		try {
 			sync(source, proxy);
+			applyFit(source, proxy, MorphConfig.get(source.getUUID()));
 		} catch (Throwable t) {
 			EntityMorphClient.LOGGER.debug("Morph sync failed", t);
 		} finally {
@@ -360,6 +365,32 @@ public final class MorphManager {
 				boolean left = s.getMainArm() == HumanoidArm.LEFT;
 				if (mob.isLeftHanded() != left) mob.setLeftHanded(left);
 			}
+		}
+	}
+
+	/**
+	 * Scales the proxy (via its SCALE attribute, so model, shadow, name tag and hitbox all follow) so its
+	 * standing height or eye height matches the real entity's.
+	 */
+	private static void applyFit(Entity src, Entity dst, @Nullable MorphEntry e) {
+		if (!(dst instanceof LivingEntity d)) return;
+		AttributeInstance scaleAttr = d.getAttribute(Attributes.SCALE);
+		if (scaleAttr == null) return;
+		double target = 1.0;
+		MorphEntry.FitMode mode = e == null || e.fit == null ? MorphEntry.FitMode.NONE : e.fit;
+		if (mode != MorphEntry.FitMode.NONE) {
+			EntityDimensions srcDims = src.getDimensions(Pose.STANDING);
+			EntityDimensions dstDims = d.getDimensions(Pose.STANDING);
+			float current = d.getScale();
+			if (current <= 0) current = 1;
+			// dimensions scale linearly with the attribute, so divide out the current scale
+			float base = (mode == MorphEntry.FitMode.EYES ? dstDims.eyeHeight() : dstDims.height()) / current;
+			float want = mode == MorphEntry.FitMode.EYES ? srcDims.eyeHeight() : srcDims.height();
+			if (base > 0.01F && want > 0.01F) target = Math.max(0.0625, Math.min(16.0, want / base));
+		}
+		if (Math.abs(scaleAttr.getBaseValue() - target) > 1.0E-3) {
+			scaleAttr.setBaseValue(target);
+			d.refreshDimensions();
 		}
 	}
 
