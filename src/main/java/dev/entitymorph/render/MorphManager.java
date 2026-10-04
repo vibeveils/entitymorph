@@ -64,6 +64,14 @@ public final class MorphManager {
 	private static @Nullable ClientLevel lastLevel;
 	private static int tickCounter;
 	private static final ThreadLocal<Boolean> BUSY = ThreadLocal.withInitial(() -> false);
+	/** Set while vanilla extracts the local player's first-person state, which must stay a player state. */
+	private static final ThreadLocal<Boolean> SUPPRESS = ThreadLocal.withInitial(() -> false);
+	/** Proxies are never added to the level, so give them their own (negative) ids. */
+	private static int nextProxyId = -1_000_000;
+
+	public static void setSuppressed(boolean suppressed) {
+		SUPPRESS.set(suppressed);
+	}
 
 	private MorphManager() {
 	}
@@ -72,7 +80,7 @@ public final class MorphManager {
 
 	/** The entity that should actually be rendered in place of {@code source}. */
 	public static Entity substitute(Entity source) {
-		if (source == null || BUSY.get() || SOURCE_OF_PROXY.containsKey(source)) return source;
+		if (source == null || BUSY.get() || SUPPRESS.get() || SOURCE_OF_PROXY.containsKey(source)) return source;
 		Entity proxy = proxyFor(source);
 		if (proxy == null) return source;
 		BUSY.set(true);
@@ -161,6 +169,9 @@ public final class MorphManager {
 		}
 		CREATABLE.put(model, created != null);
 		if (created != null) {
+			// 26.3 throws if getId() is called before an id is assigned (item models seed from it).
+			created.setId(nextProxyId--);
+			if (nextProxyId > -1000) nextProxyId = -1_000_000;
 			created.setSilent(true);
 			if (created instanceof Mob mob) mob.setNoAi(true);
 		}
