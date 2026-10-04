@@ -1,27 +1,30 @@
 {
 	"schemaVersion": 1,
-	"id": "entitymorph",
+	"id": "sharewarehud",
 	"version": "${version}",
-	"name": "Entity Morph",
-	"description": "Client-side: render any player or entity (including yourself) as a different entity model with a custom skin. Settings are saved locally per entity UUID, per world or server.",
+	"name": "Shareware HUD",
+	"description": "Recreates the HUD from the 2019 April Fools' version Java Edition 3D Shareware v1.34: a 3x3 hotbar, a player portrait and compact percentage stats.",
 	"authors": [
-		"codedcells"
+		"You"
 	],
 	"license": "MIT",
-	"icon": "assets/entitymorph/icon.png",
+	"icon": "assets/sharewarehud/icon.png",
 	"environment": "client",
 	"entrypoints": {
 		"client": [
-			"dev.entitymorph.EntityMorphClient"
+			"io.github.sharewarehud.SharewareHud"
+		],
+		"modmenu": [
+			"io.github.sharewarehud.ModMenuIntegration"
 		]
 	},
-	"mixins": [
-		"entitymorph.mixins.json"
-	],
 	"depends": {
 		"fabricloader": ">=0.19.5",
 		"minecraft": "~26.3",
 		"java": ">=25",
 		"fabric-api": "*"
+	},
+	"suggests": {
+		"modmenu": "*"
 	}
 }
