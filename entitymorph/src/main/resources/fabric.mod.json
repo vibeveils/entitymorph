@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "entitymorph",
+	"version": "${version}",
+	"name": "Entity Morph",
+	"description": "Client-side: render any player or entity (including yourself) as a different entity model with a custom skin. Settings are saved locally per entity UUID, per world or server.",
+	"authors": [
+		"codedcells"
+	],
+	"license": "MIT",
+	"icon": "assets/entitymorph/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"dev.entitymorph.EntityMorphClient"
+		]
+	},
+	"mixins": [
+		"entitymorph.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
