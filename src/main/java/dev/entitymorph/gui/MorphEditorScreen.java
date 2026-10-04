@@ -17,7 +17,6 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Util;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -205,16 +204,16 @@ public class MorphEditorScreen extends Screen {
 
 		// options row 3: utilities
 		int uw = (rightW - 8) / 3;
-		addRenderableWidget(Button.builder(Component.literal("Skins folder"), b -> Util.getPlatform().openFile(MorphConfig.skinsDir().toFile()))
+		addRenderableWidget(Button.builder(Component.literal("Skins folder"), b -> com.mojang.blaze3d.Blaze3D.openPath(MorphConfig.skinsDir()))
 				.pos(rightX, optY + 48).size(uw, 20).build());
 		Button me = Button.builder(Component.literal("Edit me"), b -> {
-					if (minecraft != null && minecraft.player != null) minecraft.setScreen(new MorphEditorScreen(parent, minecraft.player));
+					if (minecraft != null && minecraft.player != null) minecraft.gui.setScreen(new MorphEditorScreen(parent, minecraft.player));
 				})
 				.pos(rightX + uw + 4, optY + 48).size(uw, 20).build();
 		me.active = minecraft != null && minecraft.player != null && minecraft.player != target;
 		addRenderableWidget(me);
 		addRenderableWidget(Button.builder(Component.literal("All saved…"), b -> {
-					if (minecraft != null) minecraft.setScreen(new MorphListScreen(this));
+					if (minecraft != null) minecraft.gui.setScreen(new MorphListScreen(this));
 				})
 				.pos(rightX + 2 * (uw + 4), optY + 48).size(rightW - 2 * (uw + 4), 20).build());
 
@@ -290,7 +289,7 @@ public class MorphEditorScreen extends Screen {
 	@Override
 	public void onClose() {
 		MorphConfig.clearPreview(uuid);
-		if (minecraft != null) minecraft.setScreen(parent);
+		if (minecraft != null) minecraft.gui.setScreen(parent);
 	}
 
 	@Override

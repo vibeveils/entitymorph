@@ -60,7 +60,7 @@ public class MorphListScreen extends Screen {
 			rows.add(new Row(uuid, entry, nameOf(uuid, loaded), loaded, y));
 
 			Button edit = Button.builder(Component.literal("Edit"), b -> {
-				if (minecraft != null && loaded != null) minecraft.setScreen(new MorphEditorScreen(this, loaded));
+				if (minecraft != null && loaded != null) minecraft.gui.setScreen(new MorphEditorScreen(this, loaded));
 			}).pos(x0 + panelW - 104, y).size(50, 20).build();
 			edit.active = loaded != null;
 			addRenderableWidget(edit);
@@ -102,7 +102,7 @@ public class MorphListScreen extends Screen {
 
 	@Override
 	public void onClose() {
-		if (minecraft != null) minecraft.setScreen(parent);
+		if (minecraft != null) minecraft.gui.setScreen(parent);
 	}
 
 	@Override

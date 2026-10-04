@@ -53,10 +53,10 @@ public final class EntityMorphClient implements ClientModInitializer {
 			if (mc.level == null || mc.player == null) return;
 			MorphManager.tick();
 			while (openKey.consumeClick()) {
-				if (mc.screen == null) mc.setScreen(new MorphEditorScreen(null, pickTarget(mc)));
+				if (mc.gui.screen() == null) mc.gui.setScreen(new MorphEditorScreen(null, pickTarget(mc)));
 			}
 			while (listKey.consumeClick()) {
-				if (mc.screen == null) mc.setScreen(new MorphListScreen(null));
+				if (mc.gui.screen() == null) mc.gui.setScreen(new MorphListScreen(null));
 			}
 		});
 	}

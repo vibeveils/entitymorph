@@ -310,11 +310,7 @@ public final class MorphManager {
 			d.yHeadRot = s.yHeadRot;
 			d.yHeadRotO = s.yHeadRotO;
 			copyWalk(s.walkAnimation, d.walkAnimation);
-			d.swinging = s.swinging;
-			d.swingTime = s.swingTime;
-			d.swingingArm = s.swingingArm;
-			d.attackAnim = s.attackAnim;
-			d.oAttackAnim = s.oAttackAnim;
+			copySwing(s, d);
 			d.hurtTime = s.hurtTime;
 			d.hurtDuration = s.hurtDuration;
 			d.deathTime = s.deathTime;
@@ -336,6 +332,36 @@ public final class MorphManager {
 				boolean left = s.getMainArm() == HumanoidArm.LEFT;
 				if (mob.isLeftHanded() != left) mob.setLeftHanded(left);
 			}
+		}
+	}
+
+	private static Field[] swingFields;
+
+	/**
+	 * Copies the arm-swing / attack animation state. In 26.3 this lives in private fields behind
+	 * getCurrentSwing(), so every non-final instance field of LivingEntity whose name mentions
+	 * "swing" or "attack" is copied (references for objects, values for primitives).
+	 */
+	private static void copySwing(LivingEntity from, LivingEntity to) {
+		if (swingFields == null) {
+			List<Field> fs = new ArrayList<>();
+			for (Field f : LivingEntity.class.getDeclaredFields()) {
+				int mod = f.getModifiers();
+				if (Modifier.isStatic(mod) || Modifier.isFinal(mod)) continue;
+				String n = f.getName().toLowerCase(java.util.Locale.ROOT);
+				if (!n.contains("swing") && !n.contains("attackanim")) continue;
+				try {
+					f.setAccessible(true);
+					fs.add(f);
+				} catch (RuntimeException ignored) {
+				}
+			}
+			swingFields = fs.toArray(new Field[0]);
+			EntityMorphClient.LOGGER.debug("Swing fields copied for morphs: {}", fs.stream().map(Field::getName).toList());
+		}
+		try {
+			for (Field f : swingFields) f.set(to, f.get(from));
+		} catch (IllegalAccessException ignored) {
 		}
 	}
 
