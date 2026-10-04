@@ -47,12 +47,12 @@ public final class MorphManager {
 	private static final class Proxy {
 		final Entity entity;
 		final String model;
-		final boolean baby;
+		final String key;
 
-		Proxy(Entity entity, String model, boolean baby) {
+		Proxy(Entity entity, String model, String key) {
 			this.entity = entity;
 			this.model = model;
-			this.baby = baby;
+			this.key = key;
 		}
 	}
 
@@ -120,16 +120,21 @@ public final class MorphManager {
 			removeProxy(source.getId());
 			return null;
 		}
-		boolean baby = e.baby;
+		String key = e.appearanceKey();
 		Proxy p = PROXIES.get(source.getId());
-		if (p != null && p.model.equals(model) && p.baby == baby && p.entity.level() == source.level()) {
+		if (p != null && p.model.equals(model) && p.key.equals(key) && p.entity.level() == source.level()) {
 			return p.entity;
 		}
 		removeProxy(source.getId());
 		Entity created = create(model, source.level() instanceof ClientLevel cl ? cl : lastLevel);
 		if (created == null) return null;
-		applyBaby(created, baby);
-		PROXIES.put(source.getId(), new Proxy(created, model, baby));
+		applyBaby(created, e.baby);
+		try {
+			Appearance.apply(created, model, e);
+		} catch (Throwable t) {
+			EntityMorphClient.LOGGER.warn("Could not apply appearance to {}", model, t);
+		}
+		PROXIES.put(source.getId(), new Proxy(created, model, key));
 		SOURCE_OF_PROXY.put(created, source);
 		return created;
 	}
@@ -140,12 +145,12 @@ public final class MorphManager {
 		String own = idOf(source.getType());
 		String model = e.hasModel() ? e.model : null;
 		if (model == null) {
-			// No model change, but "baby" on a non-baby entity still needs a proxy of the same type.
-			if (e.baby && source instanceof LivingEntity le && !le.isBaby() && !(source instanceof Player)) return own;
+			// No model change, but variants / baby / flags still need a proxy of the same type.
+			if (e.hasAppearance() && !(source instanceof Player)) return own;
 			return null;
 		}
 		if (PLAYER_MODEL.equals(model) && source instanceof Player) return null; // skin swap only
-		if (model.equals(own) && !e.baby) return null;
+		if (model.equals(own) && !e.hasAppearance()) return null;
 		return model;
 	}
 
@@ -171,11 +176,21 @@ public final class MorphManager {
 		if (created != null) {
 			// 26.3 throws if getId() is called before an id is assigned (item models seed from it).
 			created.setId(nextProxyId--);
-			if (nextProxyId > -1000) nextProxyId = -1_000_000;
 			created.setSilent(true);
 			if (created instanceof Mob mob) mob.setNoAi(true);
 		}
 		return created;
+	}
+
+	private static final Map<String, Entity> SAMPLES = new HashMap<>();
+
+	/** A spare (never rendered in the world) instance of a model, used to discover its variants. */
+	public static @Nullable Entity sample(String model) {
+		ensureLevel();
+		if (SAMPLES.containsKey(model)) return SAMPLES.get(model);
+		Entity e = create(model, lastLevel);
+		SAMPLES.put(model, e);
+		return e;
 	}
 
 	/** All entity types that can be used as morph targets, as ids. */
@@ -231,6 +246,8 @@ public final class MorphManager {
 		PROXIES.clear();
 		SOURCE_OF_PROXY.clear();
 		CREATABLE.clear();
+		SAMPLES.clear();
+		Appearance.clearCache();
 		lastLevel = null;
 	}
 

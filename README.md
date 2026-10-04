@@ -12,11 +12,11 @@ In the editor:
 
 | Control | What it does |
 |---|---|
-| Search + model list | Pick any client-creatable living entity, **Player**, or **Original model** |
+| Search + scrolling mob list | Pick any client-creatable living entity, **Player**, or **Original model** (mouse wheel / scrollbar) |
+| Look | Everything that mob supports: variants (fox type, wolf variant/collar/sound, cat, axolotl, parrot, frog, rabbit, horse, llama, sheep colour, tropical fish pattern/colours, villager type, …) and states (tamed, sitting, angry, aggressive, sheared, sleeping, begging, chest, charged, …). Also works on the entity's own model, e.g. turn a red fox into a snow fox |
 | Skin | Default · Player name (downloads that account's skin) · Skin file (PNG in the skins folder) · Texture id (e.g. `minecraft:textures/entity/zombie/husk.png`) |
 | Load / Next file | Apply or reload the typed value; cycle through PNGs in the skins folder |
 | Arms | Auto / Wide / Slim for player models (also first person) |
-| Baby | Baby variant where the model supports it |
 | Save / Reset / Cancel | Edits preview live in the world and in the doll; only Save writes them |
 
 ## Where things are saved
