@@ -264,6 +264,13 @@ public final class MorphManager {
 	/** Called every client tick: drop proxies of entities that are gone. */
 	public static void tick() {
 		ensureLevel();
+		// Mobs whose animation is advanced in their own tick (not from synced fields) need help here.
+		for (Map.Entry<Entity, Entity> en : SOURCE_OF_PROXY.entrySet()) {
+			Entity proxy = en.getKey();
+			if (DragonAnimator.isDragon(proxy) && !en.getValue().isRemoved()) {
+				DragonAnimator.tick(en.getValue(), proxy);
+			}
+		}
 		if (++tickCounter % 100 != 0) return;
 		Iterator<Map.Entry<Entity, Entity>> it = SOURCE_OF_PROXY.entrySet().iterator();
 		while (it.hasNext()) {
@@ -313,6 +320,11 @@ public final class MorphManager {
 		dst.setYRot(src.getYRot());
 		dst.setXRot(src.getXRot());
 		dst.yRotO = src.yRotO;
+		if (DragonAnimator.isDragon(dst)) {
+			// The dragon model faces the opposite way to other mobs.
+			dst.setYRot(DragonAnimator.dragonYaw(src));
+			dst.yRotO = DragonAnimator.dragonYawO(src);
+		}
 		dst.xRotO = src.xRotO;
 		dst.tickCount = src.tickCount;
 		dst.setOnGround(src.onGround());
