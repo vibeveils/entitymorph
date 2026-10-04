@@ -1,18 +1,57 @@
+# Builds Entity Morph on every push and pull request and uploads the jar.
+# Pushing a tag like v1.0.0 also publishes a GitHub Release with the jar attached.
+
 name: build
-on: [push, pull_request, workflow_dispatch]
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v6
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
         with:
-          distribution: temurin
-          java-version: 25
-      - run: chmod +x gradlew
-      - run: ./gradlew build
-      - uses: actions/upload-artifact@v4
+          java-version: '25'
+          distribution: 'microsoft'
+
+      - name: Set up Gradle (with caching)
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Make wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Build
+        run: ./gradlew build --stacktrace
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v7
         with:
-          name: shareware-hud
+          name: entitymorph-${{ github.sha }}
           path: build/libs/*.jar
+          if-no-files-found: error
+
+      - name: Drop sources jar from release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: rm -f build/libs/*-sources.jar
+
+      - name: Publish release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/libs/*.jar
+          generate_release_notes: true
