@@ -38,6 +38,18 @@ public final class DragonAnimator {
 	/** Proxies that have had their history pre-filled. */
 	private static final Map<Entity, Boolean> PRIMED = new WeakHashMap<>();
 
+	private static final Map<Entity, Float> SCALES = new WeakHashMap<>();
+
+	/** Size set by "Size: Fit …" (the dragon renderer ignores the SCALE attribute, so it's applied at submit). */
+	public static void setScale(Entity dragon, float scale) {
+		SCALES.put(dragon, scale);
+	}
+
+	public static float scaleOf(Entity dragon) {
+		Float s = SCALES.get(dragon);
+		return s == null ? 1.0F : s;
+	}
+
 	public static boolean isDragon(Entity e) {
 		for (Class<?> c = e.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
 			if (c.getSimpleName().equals("EnderDragon")) return true;

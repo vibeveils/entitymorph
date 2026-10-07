@@ -267,8 +267,17 @@ public final class MorphManager {
 		// Mobs whose animation is advanced in their own tick (not from synced fields) need help here.
 		for (Map.Entry<Entity, Entity> en : SOURCE_OF_PROXY.entrySet()) {
 			Entity proxy = en.getKey();
-			if (DragonAnimator.isDragon(proxy) && !en.getValue().isRemoved()) {
-				DragonAnimator.tick(en.getValue(), proxy);
+			Entity src = en.getValue();
+			if (src.isRemoved()) continue;
+			try {
+				sync(src, proxy);
+			} catch (Throwable t) {
+				EntityMorphClient.LOGGER.debug("Morph sync failed", t);
+			}
+			if (DragonAnimator.isDragon(proxy)) {
+				DragonAnimator.tick(src, proxy);
+			} else {
+				MobAnimator.tick(src, proxy);
 			}
 		}
 		if (++tickCounter % 100 != 0) return;
@@ -328,6 +337,8 @@ public final class MorphManager {
 		dst.xRotO = src.xRotO;
 		dst.tickCount = src.tickCount;
 		dst.setOnGround(src.onGround());
+		dst.setDeltaMovement(src.getDeltaMovement());
+		copyFluidState(src, dst);
 		if (dst.getPose() != src.getPose()) dst.setPose(src.getPose());
 		dst.setShiftKeyDown(src.isShiftKeyDown());
 		dst.setSprinting(src.isSprinting());
@@ -392,17 +403,49 @@ public final class MorphManager {
 		MorphEntry.FitMode mode = e == null || e.fit == null ? MorphEntry.FitMode.NONE : e.fit;
 		if (mode != MorphEntry.FitMode.NONE) {
 			EntityDimensions srcDims = src.getDimensions(Pose.STANDING);
-			EntityDimensions dstDims = d.getDimensions(Pose.STANDING);
-			float current = d.getScale();
-			if (current <= 0) current = 1;
-			// dimensions scale linearly with the attribute, so divide out the current scale
-			float base = (mode == MorphEntry.FitMode.EYES ? dstDims.eyeHeight() : dstDims.height()) / current;
+			float base;
+			if (DragonAnimator.isDragon(d)) {
+				// Multipart boss: use its type size directly (its own dimensions may not follow SCALE).
+				EntityDimensions typeDims = d.getType().getDimensions();
+				base = mode == MorphEntry.FitMode.EYES ? typeDims.eyeHeight() : typeDims.height();
+			} else {
+				EntityDimensions dstDims = d.getDimensions(Pose.STANDING);
+				float current = d.getScale();
+				if (current <= 0) current = 1;
+				// dimensions scale linearly with the attribute, so divide out the current scale
+				base = (mode == MorphEntry.FitMode.EYES ? dstDims.eyeHeight() : dstDims.height()) / current;
+			}
 			float want = mode == MorphEntry.FitMode.EYES ? srcDims.eyeHeight() : srcDims.height();
 			if (base > 0.01F && want > 0.01F) target = Math.max(0.0625, Math.min(16.0, want / base));
 		}
+		if (DragonAnimator.isDragon(d)) DragonAnimator.setScale(d, (float) target);
 		if (Math.abs(scaleAttr.getBaseValue() - target) > 1.0E-3) {
 			scaleAttr.setBaseValue(target);
 			d.refreshDimensions();
+		}
+	}
+
+	private static @Nullable Field[] fluidFields;
+
+	/** isInWater / isUnderWater are cached flags updated in the entity's own tick; copy them from the source. */
+	private static void copyFluidState(Entity from, Entity to) {
+		if (fluidFields == null) {
+			List<Field> fs = new ArrayList<>();
+			for (String name : new String[]{"wasTouchingWater", "wasEyeInWater"}) {
+				try {
+					Field f = Entity.class.getDeclaredField(name);
+					if (f.getType() == boolean.class) {
+						f.setAccessible(true);
+						fs.add(f);
+					}
+				} catch (NoSuchFieldException | RuntimeException ignored) {
+				}
+			}
+			fluidFields = fs.toArray(new Field[0]);
+		}
+		try {
+			for (Field f : fluidFields) f.setBoolean(to, f.getBoolean(from));
+		} catch (IllegalAccessException ignored) {
 		}
 	}
 

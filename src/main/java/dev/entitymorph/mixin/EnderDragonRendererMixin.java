@@ -21,12 +21,19 @@ import dev.entitymorph.render.MorphSkins;
  */
 @Mixin(EnderDragonRenderer.class)
 public abstract class EnderDragonRendererMixin {
+	@org.spongepowered.asm.mixin.Unique
+	private static boolean entitymorph$logged;
+
 	private static final String SUBMIT = "submit(Lnet/minecraft/client/renderer/entity/state/EnderDragonRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;Lnet/minecraft/client/renderer/state/level/CameraRenderState;)V";
 
 	@Inject(method = SUBMIT, at = @At("HEAD"), require = 0)
 	private void entitymorph$scalePush(EnderDragonRenderState state, PoseStack poseStack, SubmitNodeCollector collector, CameraRenderState camera, CallbackInfo ci) {
 		Float scale = ((FabricRenderState) state).getData(MorphSkins.MODEL_SCALE);
 		if (scale != null) {
+			if (!entitymorph$logged) {
+				entitymorph$logged = true;
+				dev.entitymorph.EntityMorphClient.LOGGER.info("Scaling ender dragon morph by {}", scale);
+			}
 			poseStack.pushPose();
 			poseStack.scale(scale, scale, scale);
 		}

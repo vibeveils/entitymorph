@@ -253,6 +253,7 @@ public final class Appearance {
 			flag("sheared", "Sheared", Call.of("setSheared", true)),
 			flag("no_pumpkin", "No pumpkin", Call.of("setPumpkin", false)),
 			flag("sleeping", "Sleeping", Call.of("setSleeping", true)),
+			flag("resting", "Hanging (resting)", Call.of("setResting", true)),
 			flag("lying", "Lying down", Call.of("setLying", true)),
 			flag("interested", "Begging / curious", Call.of("setIsInterested", true)),
 			flag("crouching", "Crouching", Call.of("setIsCrouching", true)),

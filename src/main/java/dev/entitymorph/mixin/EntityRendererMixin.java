@@ -9,14 +9,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
-import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
 
 import net.fabricmc.fabric.api.client.rendering.v1.FabricRenderState;
 
 import dev.entitymorph.config.MorphEntry;
+import dev.entitymorph.render.DragonAnimator;
 import dev.entitymorph.render.MorphManager;
 import dev.entitymorph.render.MorphSkins;
 
@@ -35,8 +34,8 @@ public abstract class EntityRendererMixin<T extends Entity, S extends EntityRend
 		// Renderers that don't extend LivingEntityRenderer (the ender dragon) ignore the SCALE attribute,
 		// so carry the morph's size to submit time ourselves.
 		Float scale = null;
-		if (entity instanceof LivingEntity living && !(state instanceof LivingEntityRenderState) && MorphManager.sourceOf(entity) != entity) {
-			float s = living.getScale();
+		if (DragonAnimator.isDragon(entity) && MorphManager.sourceOf(entity) != entity) {
+			float s = DragonAnimator.scaleOf(entity);
 			if (Math.abs(s - 1.0F) > 1.0E-3F) scale = s;
 		}
 		((FabricRenderState) state).setData(MorphSkins.MODEL_SCALE, scale);
