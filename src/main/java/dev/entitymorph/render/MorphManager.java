@@ -370,8 +370,11 @@ public final class MorphManager {
 			d.hurtTime = s.hurtTime;
 			d.hurtDuration = s.hurtDuration;
 			d.deathTime = s.deathTime;
-			float health = Math.min(s.getHealth(), d.getMaxHealth());
-			if (s.getHealth() > 0 && health <= 0) health = 1;
+			// Keep the same health *fraction*, so damage-dependent looks (iron golem cracks, wolf tail)
+			// match how hurt the real entity is rather than comparing raw health to a different max.
+			float fraction = s.getMaxHealth() > 0 ? Math.min(1.0F, s.getHealth() / s.getMaxHealth()) : 1.0F;
+			float health = fraction * d.getMaxHealth();
+			if (s.getHealth() > 0 && health <= 0) health = Math.min(1.0F, d.getMaxHealth());
 			if (d.getHealth() != health) d.setHealth(health);
 
 			for (EquipmentSlot slot : EquipmentSlot.values()) {

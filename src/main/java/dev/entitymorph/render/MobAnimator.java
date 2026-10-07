@@ -47,6 +47,97 @@ public final class MobAnimator {
 	private static final Map<Class<?>, ClassInfo> INFO = new HashMap<>();
 	private static final Map<Method, Boolean> BROKEN = new HashMap<>();
 	private static final Map<Entity, Boolean> WAS_ON_GROUND = new WeakHashMap<>();
+	private static final Map<Class<?>, Map<String, Field>> FLOAT_FIELDS = new HashMap<>();
+
+	/** Non-static float fields of the class hierarchy, by name (first match from the subclass up). */
+	private static Map<String, Field> floats(Class<?> cls) {
+		return FLOAT_FIELDS.computeIfAbsent(cls, c -> {
+			Map<String, Field> out = new HashMap<>();
+			for (Class<?> k = c; k != null && k != Object.class; k = k.getSuperclass()) {
+				for (Field f : k.getDeclaredFields()) {
+					if (Modifier.isStatic(f.getModifiers()) || f.getType() != float.class || out.containsKey(f.getName())) continue;
+					try {
+						f.setAccessible(true);
+						out.put(f.getName(), f);
+					} catch (RuntimeException ignored) {
+					}
+				}
+			}
+			return out;
+		});
+	}
+
+	private static boolean has(Map<String, Field> f, String... names) {
+		for (String n : names) if (!f.containsKey(n)) return false;
+		return true;
+	}
+
+	private static float get(Map<String, Field> f, Entity e, String name) throws IllegalAccessException {
+		return f.get(name).getFloat(e);
+	}
+
+	private static void set(Map<String, Field> f, Entity e, String name, float v) throws IllegalAccessException {
+		f.get(name).setFloat(e, v);
+	}
+
+	private static final float PI = (float) Math.PI;
+
+	/**
+	 * Squid / glow squid: tentacles and body pitch are advanced in aiStep. Same maths as vanilla, but the
+	 * swim direction comes from the real entity's movement.
+	 */
+	private static void tickSquid(Entity src, Entity proxy, Map<String, Field> f) throws IllegalAccessException {
+		set(f, proxy, "xBodyRotO", get(f, proxy, "xBodyRot"));
+		set(f, proxy, "zBodyRotO", get(f, proxy, "zBodyRot"));
+		set(f, proxy, "oldTentacleMovement", get(f, proxy, "tentacleMovement"));
+		set(f, proxy, "oldTentacleAngle", get(f, proxy, "tentacleAngle"));
+
+		float speed = f.containsKey("tentacleSpeed") ? get(f, proxy, "tentacleSpeed") : 0.15F;
+		if (speed <= 0) speed = 0.15F;
+		float movement = get(f, proxy, "tentacleMovement") + speed;
+		if (movement > 2 * PI) {
+			movement -= 2 * PI;
+			// the "old" value must wrap too, or the tentacles snap for one frame
+			set(f, proxy, "oldTentacleMovement", get(f, proxy, "oldTentacleMovement") - 2 * PI);
+		}
+		set(f, proxy, "tentacleMovement", movement);
+
+		float xBodyRot = get(f, proxy, "xBodyRot");
+		if (src.isInWater()) {
+			float angle;
+			if (movement < PI) {
+				float t = movement / PI;
+				angle = (float) Math.sin(t * t * PI) * PI * 0.25F;
+			} else {
+				angle = 0.0F;
+			}
+			set(f, proxy, "tentacleAngle", angle);
+			double dx = src.getX() - src.xo;
+			double dy = src.getY() - src.yo;
+			double dz = src.getZ() - src.zo;
+			double horizontal = Math.sqrt(dx * dx + dz * dz);
+			float target = horizontal + Math.abs(dy) < 1.0E-4 ? 0.0F : (float) (-Math.atan2(horizontal, dy) * (180.0 / Math.PI));
+			xBodyRot += (target - xBodyRot) * 0.1F;
+		} else {
+			set(f, proxy, "tentacleAngle", Math.abs((float) Math.sin(movement)) * PI * 0.25F);
+			xBodyRot += (-90.0F - xBodyRot) * 0.02F;
+		}
+		set(f, proxy, "xBodyRot", xBodyRot);
+	}
+
+	/** Parrot / chicken wing flapping (advanced in aiStep): flap while the real entity is airborne. */
+	private static void tickFlapping(Entity src, Entity proxy, Map<String, Field> f) throws IllegalAccessException {
+		set(f, proxy, "oFlap", get(f, proxy, "flap"));
+		set(f, proxy, "oFlapSpeed", get(f, proxy, "flapSpeed"));
+		boolean airborne = !src.onGround() && !src.isPassenger();
+		float flapSpeed = get(f, proxy, "flapSpeed") + (airborne ? 4 : -1) * 0.3F;
+		set(f, proxy, "flapSpeed", Math.max(0.0F, Math.min(1.0F, flapSpeed)));
+		float flapping = get(f, proxy, "flapping");
+		if (airborne && flapping < 1.0F) flapping = 1.0F;
+		flapping *= 0.9F;
+		set(f, proxy, "flapping", flapping);
+		set(f, proxy, "flap", get(f, proxy, "flap") + flapping * 2.0F);
+	}
 
 	private static ClassInfo info(Class<?> c) {
 		return INFO.computeIfAbsent(c, MobAnimator::discover);
@@ -112,6 +203,19 @@ public final class MobAnimator {
 				BROKEN.put(m, true);
 				EntityMorphClient.LOGGER.debug("Disabling morph animation hook {}.{}", proxy.getClass().getSimpleName(), m.getName(), t);
 			}
+		}
+
+		// Field-driven animations normally advanced in aiStep.
+		Map<String, Field> fl = floats(proxy.getClass());
+		try {
+			if (has(fl, "tentacleMovement", "oldTentacleMovement", "tentacleAngle", "oldTentacleAngle", "xBodyRot", "xBodyRotO", "zBodyRot", "zBodyRotO")) {
+				tickSquid(src, proxy, fl);
+			}
+			if (has(fl, "flap", "oFlap", "flapSpeed", "oFlapSpeed", "flapping")) {
+				tickFlapping(src, proxy, fl);
+			}
+		} catch (Throwable t) {
+			EntityMorphClient.LOGGER.debug("Field animation failed for {}", proxy.getClass().getSimpleName(), t);
 		}
 
 		// 2/3. Hopping: started when the real entity leaves the ground.
