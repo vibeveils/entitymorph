@@ -14,6 +14,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.EntityHitResult;
 
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -22,6 +23,7 @@ import dev.entitymorph.config.MorphConfig;
 import dev.entitymorph.gui.MorphEditorScreen;
 import dev.entitymorph.gui.MorphListScreen;
 import dev.entitymorph.render.MorphManager;
+import dev.entitymorph.render.ShoulderTracker;
 import dev.entitymorph.skin.SkinCache;
 
 public final class EntityMorphClient implements ClientModInitializer {
@@ -42,12 +44,16 @@ public final class EntityMorphClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.JOIN.register((listener, sender, mc) -> {
 			MorphManager.clear();
 			MorphConfig.onJoin(mc);
+			ShoulderTracker.onJoin(MorphConfig.currentFile());
 		});
 		ClientPlayConnectionEvents.DISCONNECT.register((listener, mc) -> {
 			MorphConfig.onDisconnect();
+			ShoulderTracker.onDisconnect();
 			MorphManager.clear();
 			SkinCache.clearAll();
 		});
+
+		ClientEntityEvents.ENTITY_UNLOAD.register(ShoulderTracker::onUnload);
 
 		ClientTickEvents.END_CLIENT_TICK.register(mc -> {
 			if (mc.level == null || mc.player == null) return;

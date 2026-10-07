@@ -108,12 +108,120 @@ public final class MorphManager {
 	/** The morph settings that apply to whatever is being rendered (real entity or proxy). */
 	public static @Nullable MorphEntry entryFor(Entity rendered) {
 		if (!MorphConfig.isActive() || rendered == null) return null;
+		ShoulderProxy sp = SHOULDER_BY_ENTITY.get(rendered);
+		if (sp != null) return sp.entry;
 		return MorphConfig.get(sourceOf(rendered).getUUID());
 	}
 
 	public static boolean isPlayerModel(@Nullable MorphEntry e, Entity source) {
 		if (e == null || !e.hasModel()) return source instanceof Player;
 		return PLAYER_MODEL.equals(e.model);
+	}
+
+	/** The proxy currently standing in for {@code source}, without creating one. */
+	public static @Nullable Entity existingProxy(@Nullable Entity source) {
+		if (source == null) return null;
+		Proxy p = PROXIES.get(source.getId());
+		return p != null && SOURCE_OF_PROXY.get(p.entity) == source ? p.entity : null;
+	}
+
+	// ------------------------------------------------------------ camera
+
+	private static net.minecraft.client.renderer.state.level.@Nullable CameraRenderState camera;
+
+	public static void setCamera(net.minecraft.client.renderer.state.level.CameraRenderState cam) {
+		camera = cam;
+	}
+
+	public static net.minecraft.client.renderer.state.level.@Nullable CameraRenderState camera() {
+		return camera;
+	}
+
+	// ---------------------------------------------------- shoulder parrots
+
+	private static final class ShoulderProxy {
+		final Entity entity;
+		final String key;
+		final MorphEntry entry;
+		java.lang.ref.WeakReference<Entity> holder;
+
+		ShoulderProxy(Entity entity, String key, MorphEntry entry, Entity holder) {
+			this.entity = entity;
+			this.key = key;
+			this.entry = entry;
+			this.holder = new java.lang.ref.WeakReference<>(holder);
+		}
+	}
+
+	private static final Map<String, ShoulderProxy> SHOULDERS = new HashMap<>();
+	private static final Map<Entity, ShoulderProxy> SHOULDER_BY_ENTITY = new IdentityHashMap<>();
+	private static final float SHOULDER_HEIGHT = 0.9F;
+
+	/**
+	 * Builds (or reuses) the morph for the parrot on {@code player}'s shoulder and extracts its render
+	 * state, posed to sit on the shoulder. Null when the vanilla parrot should be drawn instead.
+	 */
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	public static @Nullable ShoulderRender shoulder(Player player, boolean left, MorphEntry e, float partialTick) {
+		ensureLevel();
+		String slot = player.getUUID() + (left ? ":L" : ":R");
+		String model = e.hasModel() ? e.model : idOf(EntityTypes.PARROT);
+		MorphEntry look = e.copy();
+		if (!look.flags.contains("sitting")) look.flags.add("sitting");
+		String key = model + "|" + look.appearanceKey();
+
+		ShoulderProxy sp = SHOULDERS.get(slot);
+		if (sp == null || !sp.key.equals(key) || sp.entity.level() != player.level()) {
+			if (sp != null) SHOULDER_BY_ENTITY.remove(sp.entity);
+			Entity created = create(model, player.level() instanceof ClientLevel cl ? cl : lastLevel);
+			if (created == null) return null;
+			applyBaby(created, look.baby);
+			try {
+				Appearance.apply(created, model, look);
+			} catch (Throwable t) {
+				EntityMorphClient.LOGGER.debug("Shoulder appearance failed", t);
+			}
+			sp = new ShoulderProxy(created, key, e, player);
+			SHOULDERS.put(slot, sp);
+			SHOULDER_BY_ENTITY.put(created, sp);
+		}
+		sp.holder = new java.lang.ref.WeakReference<>(player);
+
+		Entity proxy = sp.entity;
+		// Lighting and animation timing follow the player.
+		double y = player.getY() + 1.5;
+		proxy.setPos(player.getX(), y, player.getZ());
+		proxy.xo = player.xo;
+		proxy.yo = player.yo + 1.5;
+		proxy.zo = player.zo;
+		proxy.xOld = proxy.xo;
+		proxy.yOld = proxy.yo;
+		proxy.zOld = proxy.zo;
+		proxy.tickCount = player.tickCount;
+		proxy.setOnGround(true);
+		proxy.setInvisible(player.isInvisible());
+
+		try {
+			var renderer = Minecraft.getInstance().getEntityRenderDispatcher().getRenderer(proxy);
+			var state = ((net.minecraft.client.renderer.entity.EntityRenderer) renderer).createRenderState(proxy, partialTick);
+			if (state instanceof net.minecraft.client.renderer.entity.state.LivingEntityRenderState living) {
+				// Face the same way as the player (we draw inside the player's rotated model space).
+				living.bodyRot = 180.0F;
+				living.yRot = 0.0F;
+				living.xRot = 0.0F;
+			}
+			float h = Math.max(proxy.getBbHeight(), proxy.getBbWidth());
+			float scale = h > SHOULDER_HEIGHT ? SHOULDER_HEIGHT / h : 1.0F;
+			return new ShoulderRender(renderer, (net.minecraft.client.renderer.entity.state.EntityRenderState) state, scale);
+		} catch (Throwable t) {
+			EntityMorphClient.LOGGER.debug("Shoulder morph extraction failed", t);
+			return null;
+		}
+	}
+
+	public static void clearShoulder(Player player, boolean left) {
+		ShoulderProxy sp = SHOULDERS.remove(player.getUUID() + (left ? ":L" : ":R"));
+		if (sp != null) SHOULDER_BY_ENTITY.remove(sp.entity);
 	}
 
 	/** Proxy for the given source or null when the source should render as itself. */
@@ -252,6 +360,8 @@ public final class MorphManager {
 		SOURCE_OF_PROXY.clear();
 		CREATABLE.clear();
 		SAMPLES.clear();
+		SHOULDERS.clear();
+		SHOULDER_BY_ENTITY.clear();
 		Appearance.clearCache();
 		lastLevel = null;
 	}
@@ -278,6 +388,16 @@ public final class MorphManager {
 				DragonAnimator.tick(src, proxy);
 			} else {
 				MobAnimator.tick(src, proxy);
+			}
+		}
+		for (ShoulderProxy sp : SHOULDERS.values()) {
+			Entity holder = sp.holder.get();
+			if (holder == null || holder.isRemoved()) continue;
+			try {
+				// Sitting on a shoulder: animate as if standing on the ground, flap when the player is airborne.
+				MobAnimator.tick(holder, sp.entity);
+			} catch (Throwable t) {
+				EntityMorphClient.LOGGER.debug("Shoulder animation failed", t);
 			}
 		}
 		if (++tickCounter % 100 != 0) return;
@@ -338,6 +458,7 @@ public final class MorphManager {
 		dst.tickCount = src.tickCount;
 		dst.setOnGround(src.onGround());
 		dst.setDeltaMovement(src.getDeltaMovement());
+		copyLeash(src, dst);
 		copyFluidState(src, dst);
 		if (dst.getPose() != src.getPose()) dst.setPose(src.getPose());
 		dst.setShiftKeyDown(src.isShiftKeyDown());
@@ -425,6 +546,33 @@ public final class MorphManager {
 		if (Math.abs(scaleAttr.getBaseValue() - target) > 1.0E-3) {
 			scaleAttr.setBaseValue(target);
 			d.refreshDimensions();
+		}
+	}
+
+	private static boolean leashLooked;
+	private static @Nullable Method getLeashData;
+	private static @Nullable Method setLeashData;
+
+	/** A leashed mob's lead belongs to the real entity; share it with the proxy so the lead is drawn from the morph. */
+	private static void copyLeash(Entity from, Entity to) {
+		if (!(from instanceof net.minecraft.world.entity.Leashable) || !(to instanceof net.minecraft.world.entity.Leashable)) return;
+		if (!leashLooked) {
+			leashLooked = true;
+			for (Method m : net.minecraft.world.entity.Leashable.class.getMethods()) {
+				if (m.getName().equals("getLeashData") && m.getParameterCount() == 0) getLeashData = m;
+				if (m.getName().equals("setLeashData") && m.getParameterCount() == 1) setLeashData = m;
+			}
+			if (getLeashData == null || setLeashData == null) {
+				EntityMorphClient.LOGGER.warn("Leash data access not found; leads on morphed mobs disabled");
+			}
+		}
+		if (getLeashData == null || setLeashData == null) return;
+		try {
+			Object data = getLeashData.invoke(from);
+			if (getLeashData.invoke(to) != data) setLeashData.invoke(to, data);
+		} catch (Throwable t) {
+			getLeashData = null;
+			EntityMorphClient.LOGGER.warn("Copying leash to morph failed; disabling", t);
 		}
 	}
 

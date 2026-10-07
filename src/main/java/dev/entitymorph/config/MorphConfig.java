@@ -130,6 +130,10 @@ public final class MorphConfig {
 		}
 	}
 
+	public static @org.jspecify.annotations.Nullable Path currentFile() {
+		return file;
+	}
+
 	public static boolean isActive() {
 		return file != null;
 	}

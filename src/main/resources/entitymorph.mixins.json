@@ -9,7 +9,8 @@
 		"EntityRendererMixin",
 		"InventoryScreenMixin",
 		"LevelExtractorMixin",
-		"LivingEntityRendererMixin"
+		"LivingEntityRendererMixin",
+		"ParrotOnShoulderLayerMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

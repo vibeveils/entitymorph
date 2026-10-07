@@ -16,7 +16,18 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Avatar;
 import net.minecraft.world.entity.player.PlayerSkin;
 
+import java.util.UUID;
+
+import org.spongepowered.asm.mixin.Unique;
+
+import net.minecraft.world.entity.player.Player;
+
+import net.fabricmc.fabric.api.client.rendering.v1.FabricRenderState;
+
+import dev.entitymorph.config.MorphConfig;
 import dev.entitymorph.config.MorphEntry;
+import dev.entitymorph.render.ShoulderRender;
+import dev.entitymorph.render.ShoulderTracker;
 import dev.entitymorph.render.MorphManager;
 import dev.entitymorph.render.MorphSkins;
 
@@ -29,6 +40,10 @@ import dev.entitymorph.render.MorphSkins;
 public abstract class AvatarRendererMixin<AvatarlikeEntity extends Avatar & ClientAvatarEntity> {
 	@Inject(method = "extractRenderState(Lnet/minecraft/world/entity/Avatar;Lnet/minecraft/client/renderer/entity/state/AvatarRenderState;F)V", at = @At("TAIL"))
 	private void entitymorph$applySkin(AvatarlikeEntity entity, AvatarRenderState state, float partialTicks, CallbackInfo ci) {
+		if (entity instanceof Player player) {
+			entitymorph$shoulder(player, state, true, state.parrotOnLeftShoulder != null, partialTicks);
+			entitymorph$shoulder(player, state, false, state.parrotOnRightShoulder != null, partialTicks);
+		}
 		MorphEntry e = MorphManager.entryFor(entity);
 		if (e == null) return;
 		PlayerSkin skin = MorphSkins.avatarSkin(state.skin, e);
@@ -36,6 +51,23 @@ public abstract class AvatarRendererMixin<AvatarlikeEntity extends Avatar & Clie
 			state.skin = skin;
 			if (skin.cape() == null) state.showCape = false;
 		}
+	}
+
+	@Unique
+	private static void entitymorph$shoulder(Player player, AvatarRenderState state, boolean left, boolean occupied, float partialTicks) {
+		ShoulderRender render = null;
+		try {
+			UUID parrot = MorphConfig.isActive() ? ShoulderTracker.parrotOn(player, left, occupied) : null;
+			MorphEntry pe = parrot == null ? null : MorphConfig.get(parrot);
+			if (pe != null && !pe.isEmpty()) {
+				render = MorphManager.shoulder(player, left, pe, partialTicks);
+			} else {
+				MorphManager.clearShoulder(player, left);
+			}
+		} catch (Throwable t) {
+			render = null;
+		}
+		((FabricRenderState) state).setData(left ? MorphSkins.SHOULDER_LEFT : MorphSkins.SHOULDER_RIGHT, render);
 	}
 
 	@Inject(method = {"renderRightHand", "renderLeftHand"}, at = @At("HEAD"), cancellable = true)

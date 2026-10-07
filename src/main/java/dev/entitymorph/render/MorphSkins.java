@@ -19,6 +19,9 @@ public final class MorphSkins {
 	/** Texture override carried on a render state from extraction to submission. */
 	public static final RenderStateDataKey<Identifier> TEXTURE = RenderStateDataKey.create(() -> "entitymorph texture override");
 	/** Model scale for renderers that don't apply the SCALE attribute themselves (ender dragon). */
+	/** Morphed shoulder parrots, extracted with the player and drawn by the shoulder layer. */
+	public static final RenderStateDataKey<ShoulderRender> SHOULDER_LEFT = RenderStateDataKey.create(() -> "entitymorph shoulder left");
+	public static final RenderStateDataKey<ShoulderRender> SHOULDER_RIGHT = RenderStateDataKey.create(() -> "entitymorph shoulder right");
 	public static final RenderStateDataKey<Float> MODEL_SCALE = RenderStateDataKey.create(() -> "entitymorph model scale");
 
 	private MorphSkins() {
