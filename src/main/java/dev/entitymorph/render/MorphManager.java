@@ -360,6 +360,7 @@ public final class MorphManager {
 		SOURCE_OF_PROXY.clear();
 		CREATABLE.clear();
 		SAMPLES.clear();
+		BABY_SUPPORT.clear();
 		SHOULDERS.clear();
 		SHOULDER_BY_ENTITY.clear();
 		Appearance.clearCache();
@@ -412,6 +413,31 @@ public final class MorphManager {
 	}
 
 	// -------------------------------------------------------------------- sync
+
+	private static final Map<String, Boolean> BABY_SUPPORT = new HashMap<>();
+
+	/**
+	 * Whether the model has a baby form: a throwaway instance is made a baby and asked if it is one.
+	 * Mobs without babies (most hostiles) inherit a setBaby that does nothing, so they answer no.
+	 */
+	public static boolean supportsBaby(String model) {
+		ensureLevel();
+		Boolean known = BABY_SUPPORT.get(model);
+		if (known != null) return known;
+		boolean ok = false;
+		if (!PLAYER_MODEL.equals(model)) {
+			Entity probe = create(model, lastLevel);
+			if (probe instanceof LivingEntity living) {
+				try {
+					applyBaby(probe, true);
+					ok = living.isBaby();
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+		BABY_SUPPORT.put(model, ok);
+		return ok;
+	}
 
 	private static void applyBaby(Entity e, boolean baby) {
 		if (!baby) return;

@@ -156,7 +156,12 @@ public class MorphEditorScreen extends Screen {
 		Entity sample = MorphManager.sample(model);
 		List<Item> items = new ArrayList<>();
 
-		items.add((x, y, w) -> toggle(x, y, w, "Baby", draft.baby, () -> draft.baby = !draft.baby));
+		if (MorphManager.supportsBaby(model)) {
+			items.add((x, y, w) -> toggle(x, y, w, "Baby", draft.baby, () -> draft.baby = !draft.baby));
+		} else if (draft.baby) {
+			draft.baby = false; // left over from a model that had one
+			changed();
+		}
 		if (draft.hasModel()) items.add((x, y, w) -> Button.builder(Component.literal("Size: " + draft.fit.label), b -> {
 					draft.fit = draft.fit.next();
 					changed();
