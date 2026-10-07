@@ -155,7 +155,8 @@ public final class MobAnimator {
 				if (m.getParameterCount() != 0 || Modifier.isStatic(m.getModifiers()) || m.isSynthetic() || m.isBridge()) continue;
 				String name = m.getName();
 				String lower = name.toLowerCase(Locale.ROOT);
-				if (!lower.contains("anim")) continue;
+				// "peek": the shulker lid eases towards its target opening in updatePeekAmount().
+				if (!lower.contains("anim") && !lower.contains("peek")) continue;
 				if (SKIP_PREFIXES.stream().anyMatch(lower::startsWith)) continue;
 				if (methods.stream().anyMatch(x -> x.getName().equals(name))) continue; // overridden lower down
 				try {

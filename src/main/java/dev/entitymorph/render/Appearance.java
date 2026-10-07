@@ -263,7 +263,7 @@ public final class Appearance {
 			flag("charged", "Charged", Call.of("setPowered", true)),
 			flag("puffed", "Puffed up", new Call("setPuffState", new Class<?>[]{int.class}, new Object[]{2})),
 			flag("dancing", "Dancing", Call.of("setDancing", true)),
-			flag("hiding", "Peeking (closed)", new Call("setRawPeekAmount", new Class<?>[]{int.class}, new Object[]{0}))
+			flag("open_shell", "Shell open", new Call("setRawPeekAmount", new Class<?>[]{int.class}, new Object[]{100}))
 	);
 
 	private static final Map<String, List<Flag>> FLAG_CACHE = new HashMap<>();

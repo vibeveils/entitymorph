@@ -466,6 +466,10 @@ public final class MorphManager {
 
 	private static void sync(Entity src, Entity dst) {
 		dst.setPos(src.getX(), src.getY(), src.getZ());
+		if (dst.getX() != src.getX() || dst.getY() != src.getY() || dst.getZ() != src.getZ()) {
+			// Some mobs (shulker) snap setPos to the block grid; a morph must follow smoothly instead.
+			dst.setPosRaw(src.getX(), src.getY(), src.getZ());
+		}
 		dst.xo = src.xo;
 		dst.yo = src.yo;
 		dst.zo = src.zo;
