@@ -37,15 +37,31 @@ public class MouthItemLayer extends RenderLayer<LivingEntityRenderState, EntityM
 	private static @Nullable Method updateForLiving;
 	private static boolean looked;
 
+	/** Where the item is drawn: in a wolf's mouth, or carried in front like an enderman's block. */
+	public enum Mode { MOUTH, CARRY }
+
+	private final Mode mode;
+
 	public MouthItemLayer(RenderLayerParent<LivingEntityRenderState, EntityModel<LivingEntityRenderState>> parent, ItemModelResolver itemModelResolver) {
+		this(parent, itemModelResolver, Mode.MOUTH);
+	}
+
+	public MouthItemLayer(RenderLayerParent<LivingEntityRenderState, EntityModel<LivingEntityRenderState>> parent, ItemModelResolver itemModelResolver, Mode mode) {
 		super(parent);
 		resolver = itemModelResolver;
+		this.mode = mode;
 	}
 
 	/** Called from extraction: resolve the held item into a render state, or clear it. */
 	public static void extract(LivingEntity entity, FabricRenderState state) {
+		extract(entity, state, false);
+	}
+
+	/** @param skipBlocks blocks are drawn natively (enderman carried block), so only resolve other items */
+	public static void extract(LivingEntity entity, FabricRenderState state, boolean skipBlocks) {
 		ItemStack stack = entity.getMainHandItem();
-		if (stack.isEmpty() || resolver == null || entity.isInvisible()) {
+		if (stack.isEmpty() || resolver == null || entity.isInvisible()
+				|| (skipBlocks && stack.getItem() instanceof net.minecraft.world.item.BlockItem)) {
 			state.setData(MOUTH_ITEM, null);
 			return;
 		}
@@ -101,6 +117,19 @@ public class MouthItemLayer extends RenderLayer<LivingEntityRenderState, EntityM
 	public void submit(PoseStack poseStack, SubmitNodeCollector collector, int light, LivingEntityRenderState state, float yRot, float xRot) {
 		ItemStackRenderState item = ((FabricRenderState) state).getData(MOUTH_ITEM);
 		if (item == null || item.isEmpty()) return;
+
+		if (mode == Mode.CARRY) {
+			// Same spot the enderman holds its block: in front of the body, between the hands.
+			poseStack.pushPose();
+			getParentModel().root().translateAndRotate(poseStack);
+			poseStack.translate(0.0F, 0.6875F, -0.75F);
+			poseStack.rotate(Axis.XP, (float) Math.toRadians(20.0));
+			poseStack.translate(0.0F, 0.1875F, 0.1F);
+			poseStack.rotate(Axis.XP, (float) Math.toRadians(180.0));
+			item.submit(poseStack, collector, light, OverlayTexture.NO_OVERLAY, state.outlineColor);
+			poseStack.popPose();
+			return;
+		}
 
 		ModelPart root = getParentModel().root();
 		ModelPart head = child(root, "head");

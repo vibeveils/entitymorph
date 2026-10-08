@@ -64,6 +64,9 @@ public final class EntityMorphClient implements ClientModInitializer {
 		LivingEntityRenderLayerRegistrationCallback.EVENT.register((type, renderer, helper, context) -> {
 			if (type == EntityTypes.WOLF) {
 				helper.register(new MouthItemLayer((RenderLayerParent) renderer, context.getItemModelResolver()));
+			} else if (type == EntityTypes.ENDERMAN) {
+				// Non-block items; blocks use the enderman's own carried-block rendering.
+				helper.register(new MouthItemLayer((RenderLayerParent) renderer, context.getItemModelResolver(), MouthItemLayer.Mode.CARRY));
 			}
 		});
 

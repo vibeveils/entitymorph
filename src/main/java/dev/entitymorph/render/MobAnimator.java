@@ -129,6 +129,7 @@ public final class MobAnimator {
 
 	private static final Map<Entity, int[]> ARMADILLO = new WeakHashMap<>();
 	private static final Map<Entity, Boolean> SAT = new WeakHashMap<>();
+	private static final Map<Entity, Boolean> JUMPING = new WeakHashMap<>();
 	private static final Map<Entity, Boolean> CROUCHED = new WeakHashMap<>();
 	private static final Map<Class<?>, Map<String, Method>> METHODS = new HashMap<>();
 
@@ -222,6 +223,35 @@ public final class MobAnimator {
 					if (((Enum<?>) o).name().equals(name)) switchTo.invoke(proxy, o);
 				}
 			}
+		}
+
+		// Enderman: a held block becomes its carried block (other items are drawn by MouthItemLayer).
+		Method setCarried = method(c, "setCarriedBlock", net.minecraft.world.level.block.state.BlockState.class);
+		if (setCarried != null && src instanceof net.minecraft.world.entity.LivingEntity holder) {
+			net.minecraft.world.item.ItemStack held = holder.getMainHandItem();
+			net.minecraft.world.level.block.state.BlockState block =
+					held.getItem() instanceof net.minecraft.world.item.BlockItem bi ? bi.getBlock().defaultBlockState() : null;
+			Method getCarried = method(c, "getCarriedBlock");
+			Object cur = getCarried != null ? getCarried.invoke(proxy) : null;
+			if (cur != block) setCarried.invoke(proxy, block);
+		}
+
+		// Horses rear up when they jump (vanilla calls standIfPossible on a jump), and settle on landing.
+		if (has(fl, "standAnim", "standAnimO")) {
+			boolean up = JUMPING.getOrDefault(proxy, false);
+			if (takeOff) up = true;
+			if (landed || onGround) up = up && !onGround;
+			JUMPING.put(proxy, up);
+			float a = get(fl, proxy, "standAnim");
+			set(fl, proxy, "standAnimO", a);
+			if (up) {
+				a += (1.0F - a) * 0.4F + 0.05F;
+				if (a > 1.0F) a = 1.0F;
+			} else {
+				a += (0.8F * a * a * a - a) * 0.6F - 0.05F;
+				if (a < 0.0F) a = 0.0F;
+			}
+			set(fl, proxy, "standAnim", a);
 		}
 
 		// Sit while the real entity rides something; sneak while it crouches (fox, cat, wolf, parrot…).

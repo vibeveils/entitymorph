@@ -60,6 +60,8 @@ public abstract class EntityRendererMixin<T extends Entity, S extends EntityRend
 
 		if (entity.getType() == EntityTypes.WOLF && entity instanceof LivingEntity living) {
 			MouthItemLayer.extract(living, (FabricRenderState) state);
+		} else if (entity.getType() == EntityTypes.ENDERMAN && entity instanceof LivingEntity living) {
+			MouthItemLayer.extract(living, (FabricRenderState) state, true);
 		}
 	}
 }
