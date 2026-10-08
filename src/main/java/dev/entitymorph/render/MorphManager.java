@@ -480,16 +480,18 @@ public final class MorphManager {
 	}
 
 	private static void sync(Entity src, Entity dst) {
-		dst.setPos(src.getX(), src.getY(), src.getZ());
-		if (dst.getX() != src.getX() || dst.getY() != src.getY() || dst.getZ() != src.getZ()) {
+		double dy = seatOffset(src, dst);
+		double y = src.getY() + dy;
+		dst.setPos(src.getX(), y, src.getZ());
+		if (dst.getX() != src.getX() || dst.getY() != y || dst.getZ() != src.getZ()) {
 			// Some mobs (shulker) snap setPos to the block grid; a morph must follow smoothly instead.
-			dst.setPosRaw(src.getX(), src.getY(), src.getZ());
+			dst.setPosRaw(src.getX(), y, src.getZ());
 		}
 		dst.xo = src.xo;
-		dst.yo = src.yo;
+		dst.yo = src.yo + dy;
 		dst.zo = src.zo;
 		dst.xOld = src.xOld;
-		dst.yOld = src.yOld;
+		dst.yOld = src.yOld + dy;
 		dst.zOld = src.zOld;
 		dst.setYRot(src.getYRot());
 		dst.setXRot(src.getXRot());
@@ -594,6 +596,41 @@ public final class MorphManager {
 		if (Math.abs(scaleAttr.getBaseValue() - target) > 1.0E-3) {
 			scaleAttr.setBaseValue(target);
 			d.refreshDimensions();
+		}
+	}
+
+	private static @Nullable Method vehicleAttachment;
+	private static boolean vehicleAttachmentLooked;
+
+	/**
+	 * When riding, vanilla places a passenger at (seat point - its own vehicle attachment point). Players
+	 * sit 0.6 blocks lower than most mobs, so a morph left at the player's position sinks into the seat.
+	 * Returns how far the morph must move up/down to sit where that mob would sit.
+	 */
+	private static double seatOffset(Entity src, Entity dst) {
+		Entity vehicle = src.getVehicle();
+		if (vehicle == null) return 0.0;
+		if (!vehicleAttachmentLooked) {
+			vehicleAttachmentLooked = true;
+			for (Class<?> k = Entity.class; k != null && vehicleAttachment == null; k = k.getSuperclass()) {
+				for (Method m : k.getDeclaredMethods()) {
+					if (m.getName().equals("getVehicleAttachmentPoint") && m.getParameterCount() == 1
+							&& m.getReturnType() == net.minecraft.world.phys.Vec3.class) {
+						m.setAccessible(true);
+						vehicleAttachment = m;
+						break;
+					}
+				}
+			}
+			if (vehicleAttachment == null) EntityMorphClient.LOGGER.warn("getVehicleAttachmentPoint not found; riding morphs may sit at the wrong height");
+		}
+		if (vehicleAttachment == null) return 0.0;
+		try {
+			var srcPoint = (net.minecraft.world.phys.Vec3) vehicleAttachment.invoke(src, vehicle);
+			var dstPoint = (net.minecraft.world.phys.Vec3) vehicleAttachment.invoke(dst, vehicle);
+			return srcPoint.y - dstPoint.y;
+		} catch (Throwable t) {
+			return 0.0;
 		}
 	}
 
