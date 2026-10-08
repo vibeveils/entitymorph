@@ -6,6 +6,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.client.renderer.entity.state.AvatarRenderState;
@@ -20,6 +21,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.FabricRenderState;
 import dev.entitymorph.config.MorphEntry;
 import dev.entitymorph.render.DragonAnimator;
 import dev.entitymorph.render.MorphManager;
+import dev.entitymorph.render.RidingPose;
 import dev.entitymorph.render.MouthItemLayer;
 import dev.entitymorph.render.MorphSkins;
 
@@ -38,6 +40,20 @@ public abstract class EntityRendererMixin<T extends Entity, S extends EntityRend
 	private Entity entitymorph$morphedLeashHolder(Entity holder) {
 		Entity proxy = MorphManager.existingProxy(holder);
 		return proxy != null ? proxy : holder;
+	}
+
+	/**
+	 * Riding pose: humanoid models (zombies, skeletons, piglins, endermen, villagers' illager cousins…)
+	 * sit when their render state says "passenger". The morph itself never rides anything, so copy
+	 * the real entity's riding state once the whole extraction chain has finished.
+	 */
+	@Inject(method = "createRenderState", at = @At("RETURN"), require = 0)
+	private void entitymorph$ridingPose(CallbackInfoReturnable<S> cir, @Local(argsOnly = true) Entity entity) {
+		Entity source = MorphManager.sourceOf(entity);
+		if (source == entity) return;
+		Entity vehicle = source.getVehicle();
+		boolean sit = vehicle != null && vehicle.shouldRiderSit();
+		if (sit) RidingPose.markPassenger(cir.getReturnValue());
 	}
 
 	@Inject(method = "extractRenderState", at = @At("TAIL"))
