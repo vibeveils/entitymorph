@@ -114,7 +114,7 @@ public class MouthItemLayer extends RenderLayer<LivingEntityRenderState, EntityM
 		if (realHead != null) realHead.translateAndRotate(poseStack);
 		// Just under the tip of the snout, held crosswise like a fox does.
 		poseStack.translate(1.0F / 16.0F, 3.3F / 16.0F, -4.5F / 16.0F);
-		poseStack.mulPose(Axis.XP.rotationDegrees(90.0F));
+		poseStack.rotate(Axis.XP, (float) Math.toRadians(90.0));
 		item.submit(poseStack, collector, light, OverlayTexture.NO_OVERLAY, state.outlineColor);
 		poseStack.popPose();
 	}
