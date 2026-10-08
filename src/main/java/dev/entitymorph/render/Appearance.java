@@ -48,7 +48,13 @@ public final class Appearance {
 
 	/** One choosable component: values are stored as strings (enum name or registry id). */
 	public record ComponentOption(String id, String label, List<String> values, List<String> labels,
-								  String defaultValue, Function<String, @Nullable Object> decoder) {
+								  String defaultValue, Function<String, @Nullable Object> decoder,
+								  java.util.function.@Nullable BiConsumer<Entity, String> applier) {
+		public ComponentOption(String id, String label, List<String> values, List<String> labels,
+							   String defaultValue, Function<String, @Nullable Object> decoder) {
+			this(id, label, values, labels, defaultValue, decoder, null);
+		}
+
 		/** The value currently in effect: the chosen one, or what the mob spawns with. */
 		public String effective(@Nullable String chosen) {
 			return chosen != null && values.contains(chosen) ? chosen : defaultValue;
@@ -69,7 +75,8 @@ public final class Appearance {
 		/** Main variant pickers (fox type, wolf variant, sound) sort before colours/collars. */
 		public boolean isPrimary() {
 			String l = label.toLowerCase(Locale.ROOT);
-			return l.contains("variant") || l.contains("type") || l.contains("size");
+			return l.contains("variant") || l.contains("type") || l.contains("size") || l.contains("profession")
+					|| l.contains("level") || l.contains("oxidation");
 		}
 	}
 
@@ -185,7 +192,8 @@ public final class Appearance {
 				}));
 			}
 		}
-		out.sort((a, b) -> a.label().compareTo(b.label()));
+		out.addAll(ExtraOptions.optionsFor(sample));
+		out.sort((a, b) -> a.isPrimary() != b.isPrimary() ? (a.isPrimary() ? -1 : 1) : a.label().compareTo(b.label()));
 		return Collections.unmodifiableList(out);
 	}
 
@@ -220,12 +228,29 @@ public final class Appearance {
 
 	// ------------------------------------------------------------------ flags
 
-	/** An on/off look. {@code methods} are tried in order; the first that exists marks it supported. */
-	public record Flag(String id, String label, java.util.Set<String> onlyFor, Call... calls) {
+	/**
+	 * An on/off look. Supported when any {@code calls} setter exists, or a static synced-data field whose
+	 * name contains {@code data} holds a boolean, or (for {@code virtual} flags, applied elsewhere) the mob
+	 * is one of {@code onlyFor}.
+	 */
+	public record Flag(String id, String label, java.util.Set<String> onlyFor, List<Call> calls,
+					   @Nullable String data, boolean dataValue, boolean virtual) {
 	}
 
 	private static Flag flag(String id, String label, Call... calls) {
-		return new Flag(id, label, java.util.Set.of(), calls);
+		return new Flag(id, label, java.util.Set.of(), List.of(calls), null, true, false);
+	}
+
+	private static Flag dataFlag(String id, String label, String data, boolean value, Call... calls) {
+		return new Flag(id, label, java.util.Set.of(), List.of(calls), data, value, false);
+	}
+
+	private static Flag only(String id, String label, java.util.Set<String> onlyFor, Call... calls) {
+		return new Flag(id, label, onlyFor, List.of(calls), null, true, false);
+	}
+
+	private static Flag virtual(String id, String label, java.util.Set<String> onlyFor) {
+		return new Flag(id, label, onlyFor, List.of(), null, true, true);
 	}
 
 	/** A setter call to try: method name, argument types and the arguments for "on". */
@@ -233,23 +258,35 @@ public final class Appearance {
 		static Call of(String method, boolean value) {
 			return new Call(method, new Class<?>[]{boolean.class}, new Object[]{value});
 		}
+
+		static Call ofInt(String method, int value) {
+			return new Call(method, new Class<?>[]{int.class}, new Object[]{value});
+		}
 	}
+
+	public static final String SADDLE = "saddle";
+	public static final String SMOKE = "smoke";
 
 	public static final List<Flag> FLAGS = List.of(
 			flag("tamed", "Tamed",
 					new Call("setTame", new Class<?>[]{boolean.class, boolean.class}, new Object[]{true, false}),
-					Call.of("setTame", true)),
+					Call.of("setTame", true), Call.of("setTamed", true)),
 			flag("sitting", "Sitting",
 					Call.of("setInSittingPose", true), Call.of("setOrderedToSit", true),
 					Call.of("setSitting", true), Call.of("sit", true)),
-			flag("angry", "Angry",
+			// Endermen open their mouth from the "creepy" synced flag, not from anger.
+			dataFlag("angry", "Angry", "CREEPY", true,
 					new Call("setRemainingPersistentAngerTime", new Class<?>[]{int.class}, new Object[]{Integer.MAX_VALUE / 2}),
 					new Call("setPersistentAngerEndTime", new Class<?>[]{long.class}, new Object[]{Long.MAX_VALUE / 2}),
 					Call.of("setAngry", true), Call.of("setCreepy", true)),
 			// Every Mob has setAggressive, but only these models actually show it (raised arms, aiming, charging).
-			new Flag("aggressive", "Aggressive",
+			only("aggressive", "Aggressive",
 					java.util.Set.of("Zombie", "AbstractSkeleton", "AbstractIllager", "AbstractPiglin", "Giant"),
 					Call.of("setAggressive", true)),
+			virtual(SADDLE, "Saddle", java.util.Set.of("AbstractHorse", "Pig", "Strider", "Camel")),
+			flag("arms", "Arms", Call.of("setShowArms", true)),
+			flag("no_base", "No base plate", Call.of("setNoBasePlate", true)),
+			flag("nectar", "Pollinated", Call.of("setHasNectar", true)),
 			flag("sheared", "Sheared", Call.of("setSheared", true)),
 			flag("no_pumpkin", "No pumpkin", Call.of("setPumpkin", false)),
 			flag("sleeping", "Sleeping", Call.of("setSleeping", true)),
@@ -259,11 +296,16 @@ public final class Appearance {
 			flag("crouching", "Crouching", Call.of("setIsCrouching", true)),
 			flag("chest", "Chest", Call.of("setChest", true)),
 			flag("screaming", "Screaming", Call.of("setScreamingGoat", true)),
+			dataFlag("no_left_horn", "No left horn", "LEFT_HORN", false),
+			dataFlag("no_right_horn", "No right horn", "RIGHT_HORN", false),
 			flag("playing_dead", "Playing dead", Call.of("setPlayingDead", true)),
-			flag("charged", "Charged", Call.of("setPowered", true)),
-			flag("puffed", "Puffed up", new Call("setPuffState", new Class<?>[]{int.class}, new Object[]{2})),
+			dataFlag("charged", "Charged", "POWERED", true, Call.of("setPowered", true)),
+			flag("cold", "Cold (shivering)", Call.of("setSuffocating", true)),
+			flag("invulnerable", "Invulnerable (blue)", Call.ofInt("setInvulnerableTicks", 220)),
+			virtual(SMOKE, "Smoke particles", java.util.Set.of("Blaze")),
+			flag("puffed", "Puffed up", Call.ofInt("setPuffState", 2)),
 			flag("dancing", "Dancing", Call.of("setDancing", true)),
-			flag("open_shell", "Shell open", new Call("setRawPeekAmount", new Class<?>[]{int.class}, new Object[]{100}))
+			flag("open_shell", "Shell open", Call.ofInt("setRawPeekAmount", 100))
 	);
 
 	private static final Map<String, List<Flag>> FLAG_CACHE = new HashMap<>();
@@ -272,20 +314,24 @@ public final class Appearance {
 		return FLAG_CACHE.computeIfAbsent(model, k -> {
 			List<Flag> out = new ArrayList<>();
 			for (Flag f : FLAGS) {
-				if (!f.onlyFor().isEmpty() && !isA(sample.getClass(), f.onlyFor())) continue;
-				for (Call c : f.calls()) {
-					if (findMethod(sample.getClass(), c.method(), c.types()) != null) {
-						out.add(f);
-						break;
-					}
-				}
-			}
-			// "Charged" via the creeper's synced data if there is no setter.
-			if (out.stream().noneMatch(f -> f.id().equals("charged")) && findDataAccessor(sample.getClass(), "DATA_IS_POWERED") != null) {
-				out.add(FLAGS.stream().filter(f -> f.id().equals("charged")).findFirst().orElseThrow());
+				if (supports(sample, f)) out.add(f);
 			}
 			return Collections.unmodifiableList(out);
 		});
+	}
+
+	private static boolean supports(Entity sample, Flag f) {
+		Class<?> c = sample.getClass();
+		if (!f.onlyFor().isEmpty() && !isA(c, f.onlyFor())) return false;
+		if (f.virtual()) return true;
+		for (Call call : f.calls()) {
+			if (findMethod(c, call.method(), call.types()) != null) return true;
+		}
+		return f.data() != null && !booleanData(sample, f.data()).isEmpty();
+	}
+
+	public static boolean hasFlag(@Nullable MorphEntry e, String id) {
+		return e != null && e.flags != null && e.flags.contains(id);
 	}
 
 	private static boolean isA(Class<?> c, java.util.Set<String> simpleNames) {
@@ -295,7 +341,7 @@ public final class Appearance {
 		return false;
 	}
 
-	private static @Nullable Method findMethod(Class<?> c, String name, Class<?>[] types) {
+	static @Nullable Method findMethod(Class<?> c, String name, Class<?>[] types) {
 		for (Class<?> k = c; k != null && k != Object.class; k = k.getSuperclass()) {
 			try {
 				Method m = k.getDeclaredMethod(name, types);
@@ -307,29 +353,42 @@ public final class Appearance {
 		return null;
 	}
 
-	private static @Nullable Field findDataAccessor(Class<?> c, String name) {
-		for (Class<?> k = c; k != null && k != Object.class; k = k.getSuperclass()) {
-			try {
-				Field f = k.getDeclaredField(name);
-				if (Modifier.isStatic(f.getModifiers())) {
+	/** Static synced-data accessors whose name contains {@code namePart} and whose value is a Boolean. */
+	@SuppressWarnings("rawtypes")
+	static List<net.minecraft.network.syncher.EntityDataAccessor> booleanData(Entity e, String namePart) {
+		List<net.minecraft.network.syncher.EntityDataAccessor> out = new ArrayList<>();
+		for (Class<?> k = e.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+			for (Field f : k.getDeclaredFields()) {
+				if (!Modifier.isStatic(f.getModifiers()) || !net.minecraft.network.syncher.EntityDataAccessor.class.isAssignableFrom(f.getType())) continue;
+				if (!f.getName().toUpperCase(Locale.ROOT).contains(namePart)) continue;
+				try {
 					f.setAccessible(true);
-					return f;
+					var acc = (net.minecraft.network.syncher.EntityDataAccessor) f.get(null);
+					if (e.getEntityData().get(acc) instanceof Boolean) out.add(acc);
+				} catch (Throwable ignored) {
 				}
-			} catch (NoSuchFieldException | RuntimeException ignored) {
 			}
 		}
-		return null;
+		return out;
 	}
 
 	// ------------------------------------------------------------------ apply
 
-	/** Applies baby, components and flags from {@code e} to a freshly created proxy. */
+	/** Applies components, extra options and flags from {@code e} to a freshly created proxy. */
 	@SuppressWarnings({"unchecked", "rawtypes"})
 	public static void apply(Entity proxy, String model, MorphEntry e) {
 		if (e.components != null && !e.components.isEmpty()) {
 			for (ComponentOption opt : componentsFor(model, proxy)) {
 				String v = e.components.get(opt.id());
 				if (v == null) continue;
+				if (opt.applier() != null) {
+					try {
+						opt.applier().accept(proxy, v);
+					} catch (Throwable t) {
+						EntityMorphClient.LOGGER.debug("Option {} failed", opt.id(), t);
+					}
+					continue;
+				}
 				Object decoded = opt.decoder().apply(v);
 				if (decoded == null) continue;
 				DataComponentType<?> type = BuiltInRegistries.DATA_COMPONENT_TYPE.getValue(Identifier.parse(opt.id()));
@@ -339,7 +398,7 @@ public final class Appearance {
 		if (e.flags != null) {
 			for (String id : e.flags) {
 				for (Flag f : FLAGS) {
-					if (f.id().equals(id)) applyFlag(proxy, f);
+					if (f.id().equals(id) && !f.virtual()) applyFlag(proxy, f);
 				}
 			}
 		}
@@ -347,28 +406,41 @@ public final class Appearance {
 
 	@SuppressWarnings({"unchecked", "rawtypes"})
 	private static void applyFlag(Entity proxy, Flag f) {
-		boolean any = false;
 		for (Call c : f.calls()) {
 			Method m = findMethod(proxy.getClass(), c.method(), c.types());
 			if (m == null) continue;
 			try {
 				m.invoke(proxy, c.args());
-				any = true;
 				// Sitting needs both "ordered" and "pose" on tamables; keep trying other calls for it.
 				if (!f.id().equals("sitting")) break;
 			} catch (Throwable t) {
 				EntityMorphClient.LOGGER.debug("Flag {} failed via {}", f.id(), c.method(), t);
 			}
 		}
-		if (!any && f.id().equals("charged")) {
-			Field acc = findDataAccessor(proxy.getClass(), "DATA_IS_POWERED");
-			if (acc != null) {
+		if (f.data() != null) {
+			for (var acc : booleanData(proxy, f.data())) {
 				try {
-					proxy.getEntityData().set((net.minecraft.network.syncher.EntityDataAccessor) acc.get(null), true);
+					proxy.getEntityData().set(acc, f.dataValue());
 				} catch (Throwable t) {
-					EntityMorphClient.LOGGER.debug("Charged flag failed", t);
+					EntityMorphClient.LOGGER.debug("Flag {} data failed", f.id(), t);
 				}
 			}
 		}
+	}
+
+	/** Equipment the morph forces regardless of what the real entity wears: saddle, llama decor. */
+	public static Map<net.minecraft.world.entity.EquipmentSlot, net.minecraft.world.item.ItemStack> equipmentOverrides(@Nullable MorphEntry e) {
+		if (e == null) return Map.of();
+		Map<net.minecraft.world.entity.EquipmentSlot, net.minecraft.world.item.ItemStack> out = new java.util.EnumMap<>(net.minecraft.world.entity.EquipmentSlot.class);
+		if (hasFlag(e, SADDLE)) {
+			out.put(net.minecraft.world.entity.EquipmentSlot.SADDLE, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.SADDLE));
+		}
+		if (e.components != null) {
+			ExtraOptions.decorItem(e.components.get(ExtraOptions.DECOR)).ifPresent(id -> {
+				var item = BuiltInRegistries.ITEM.getValue(id);
+				if (item != null) out.put(net.minecraft.world.entity.EquipmentSlot.BODY, new net.minecraft.world.item.ItemStack(item));
+			});
+		}
+		return out;
 	}
 }

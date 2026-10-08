@@ -125,6 +125,149 @@ public final class MobAnimator {
 		set(f, proxy, "xBodyRot", xBodyRot);
 	}
 
+	// ------------------------------------------------------------ behaviour
+
+	private static final Map<Entity, int[]> ARMADILLO = new WeakHashMap<>();
+	private static final Map<Entity, Boolean> SAT = new WeakHashMap<>();
+	private static final Map<Entity, Boolean> CROUCHED = new WeakHashMap<>();
+	private static final Map<Class<?>, Map<String, Method>> METHODS = new HashMap<>();
+
+	private static @Nullable Method method(Class<?> c, String name, Class<?>... types) {
+		Map<String, Method> byName = METHODS.computeIfAbsent(c, k -> new HashMap<>());
+		String key = name + java.util.Arrays.toString(types);
+		if (byName.containsKey(key)) return byName.get(key);
+		Method found = Appearance.findMethod(c, name, types);
+		byName.put(key, found);
+		return found;
+	}
+
+	private static @Nullable Field intField(Class<?> c, String name) {
+		for (Class<?> k = c; k != null && k != Object.class; k = k.getSuperclass()) {
+			try {
+				Field f = k.getDeclaredField(name);
+				if (f.getType() == int.class || f.getType() == boolean.class) {
+					f.setAccessible(true);
+					return f;
+				}
+			} catch (NoSuchFieldException | RuntimeException ignored) {
+			}
+		}
+		return null;
+	}
+
+	private static void tickBehaviour(Entity src, Entity proxy, dev.entitymorph.config.@Nullable MorphEntry entry, Map<String, Field> fl,
+									  @Nullable Boolean was, boolean onGround, boolean takeOff, boolean landed) throws Exception {
+		Class<?> c = proxy.getClass();
+		boolean crouching = src.isCrouching() || src.isShiftKeyDown();
+
+		// Allay arms come up to hold an item over a few ticks.
+		if (has(fl, "holdingItemAnimationTicks", "holdingItemAnimationTicks0") && proxy instanceof net.minecraft.world.entity.LivingEntity le) {
+			float t = get(fl, proxy, "holdingItemAnimationTicks");
+			set(fl, proxy, "holdingItemAnimationTicks0", t);
+			boolean holding = !le.getMainHandItem().isEmpty() || !le.getOffhandItem().isEmpty();
+			set(fl, proxy, "holdingItemAnimationTicks", Math.max(0.0F, Math.min(5.0F, t + (holding ? 1.0F : -1.0F))));
+		}
+
+		// Slime / magma cube squish: stretch on take-off, splat on landing.
+		if (has(fl, "squish", "oSquish", "targetSquish")) {
+			float squish = get(fl, proxy, "squish");
+			set(fl, proxy, "oSquish", squish);
+			float target = get(fl, proxy, "targetSquish");
+			squish += (target - squish) * 0.5F;
+			set(fl, proxy, "squish", squish);
+			if (landed) target = -0.5F;
+			else if (takeOff) target = 1.0F;
+			set(fl, proxy, "targetSquish", target * 0.6F);
+		}
+
+		// Goat lowers its head to ram while the real entity sprints.
+		Field lowering = intField(c, "isLoweringHead");
+		Field lowerTick = intField(c, "lowerHeadTick");
+		if (lowering != null && lowerTick != null && lowering.getType() == boolean.class && lowerTick.getType() == int.class) {
+			boolean ram = src.isSprinting();
+			lowering.setBoolean(proxy, ram);
+			int t = lowerTick.getInt(proxy) + (ram ? 1 : -2);
+			lowerTick.setInt(proxy, Math.max(0, Math.min(20, t)));
+		}
+
+		// Armadillo rolls up while crouching: ROLLING -> SCARED, then UNROLLING -> IDLE.
+		Method switchTo = null;
+		for (Class<?> k = c; k != null && k != Object.class && switchTo == null; k = k.getSuperclass()) {
+			for (Method m : k.getDeclaredMethods()) {
+				if (m.getName().equals("switchToState") && m.getParameterCount() == 1 && m.getParameterTypes()[0].isEnum()) {
+					m.setAccessible(true);
+					switchTo = m;
+					break;
+				}
+			}
+		}
+		if (switchTo != null) {
+			Class<?> states = switchTo.getParameterTypes()[0];
+			int[] st = ARMADILLO.computeIfAbsent(proxy, k -> new int[]{0, 0}); // phase, ticks
+			st[1]++;
+			int phase = st[0];
+			if (crouching && (phase == 0 || phase == 3)) { phase = 1; st[1] = 0; }
+			else if (crouching && phase == 1 && st[1] > 14) { phase = 2; st[1] = 0; }
+			else if (!crouching && (phase == 1 || phase == 2)) { phase = 3; st[1] = 0; }
+			else if (!crouching && phase == 3 && st[1] > 26) { phase = 0; st[1] = 0; }
+			if (phase != st[0]) {
+				st[0] = phase;
+				String name = switch (phase) {
+					case 1 -> "ROLLING";
+					case 2 -> "SCARED";
+					case 3 -> "UNROLLING";
+					default -> "IDLE";
+				};
+				for (Object o : states.getEnumConstants()) {
+					if (((Enum<?>) o).name().equals(name)) switchTo.invoke(proxy, o);
+				}
+			}
+		}
+
+		// Sit while the real entity rides something; sneak while it crouches (fox, cat, wolf, parrot…).
+		boolean wantSit = src.isPassenger() || Appearance.hasFlag(entry, "sitting");
+		Boolean prevSit = SAT.put(proxy, wantSit);
+		if (prevSit == null || prevSit != wantSit) {
+			for (String name : new String[]{"setInSittingPose", "setOrderedToSit", "setSitting", "sit"}) {
+				Method m = method(c, name, boolean.class);
+				if (m != null) m.invoke(proxy, wantSit);
+			}
+		}
+		boolean wantCrouch = crouching || Appearance.hasFlag(entry, "crouching");
+		Boolean prevCrouch = CROUCHED.put(proxy, wantCrouch);
+		if (prevCrouch == null || prevCrouch != wantCrouch) {
+			Method m = method(c, "setIsCrouching", boolean.class);
+			if (m != null) m.invoke(proxy, wantCrouch);
+		}
+
+		// Sulfur cube: show the held item inside it (synced item data, or an item field on the mob).
+		if (c.getSimpleName().toLowerCase(java.util.Locale.ROOT).contains("sulfur") && src instanceof net.minecraft.world.entity.LivingEntity holder) {
+			net.minecraft.world.item.ItemStack held = holder.getMainHandItem();
+			setHeldItemData(proxy, held);
+		}
+	}
+
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	private static void setHeldItemData(Entity proxy, net.minecraft.world.item.ItemStack held) {
+		for (Class<?> k = proxy.getClass(); k != null && k != Object.class; k = k.getSuperclass()) {
+			if (k.getPackageName().equals("net.minecraft.world.entity")) break;
+			for (Field f : k.getDeclaredFields()) {
+				try {
+					if (Modifier.isStatic(f.getModifiers()) && net.minecraft.network.syncher.EntityDataAccessor.class.isAssignableFrom(f.getType())) {
+						f.setAccessible(true);
+						var acc = (net.minecraft.network.syncher.EntityDataAccessor) f.get(null);
+						Object cur = proxy.getEntityData().get(acc);
+						if (cur instanceof net.minecraft.world.item.ItemStack stack && stack != held) proxy.getEntityData().set(acc, held);
+					} else if (!Modifier.isStatic(f.getModifiers()) && f.getType() == net.minecraft.world.item.ItemStack.class) {
+						f.setAccessible(true);
+						if (f.get(proxy) != held) f.set(proxy, held);
+					}
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+	}
+
 	/** Parrot / chicken wing flapping (advanced in aiStep): flap while the real entity is airborne. */
 	private static void tickFlapping(Entity src, Entity proxy, Map<String, Field> f) throws IllegalAccessException {
 		set(f, proxy, "oFlap", get(f, proxy, "flap"));
@@ -156,7 +299,9 @@ public final class MobAnimator {
 				String name = m.getName();
 				String lower = name.toLowerCase(Locale.ROOT);
 				// "peek": the shulker lid eases towards its target opening in updatePeekAmount().
-				if (!lower.contains("anim") && !lower.contains("peek")) continue;
+				// "peek": shulker lid; "...Amount": panda sit/roll/lie blend timers (updateSitAmount, …).
+				boolean amount = (lower.startsWith("update") || lower.startsWith("tick")) && lower.endsWith("amount");
+				if (!lower.contains("anim") && !lower.contains("peek") && !amount) continue;
 				if (SKIP_PREFIXES.stream().anyMatch(lower::startsWith)) continue;
 				if (methods.stream().anyMatch(x -> x.getName().equals(name))) continue; // overridden lower down
 				try {
@@ -193,6 +338,10 @@ public final class MobAnimator {
 
 	/** Advance one tick of client-side animation on {@code proxy}, following {@code src}. */
 	public static void tick(Entity src, Entity proxy) {
+		tick(src, proxy, null);
+	}
+
+	public static void tick(Entity src, Entity proxy, dev.entitymorph.config.@Nullable MorphEntry entry) {
 		ClassInfo ci = info(proxy.getClass());
 
 		// 1. The mob's own animation update methods.
@@ -223,6 +372,13 @@ public final class MobAnimator {
 		boolean onGround = src.onGround();
 		Boolean was = WAS_ON_GROUND.put(proxy, onGround);
 		boolean takeOff = was != null && was && !onGround && src.getY() > src.yo;
+		boolean landed = was != null && !was && onGround;
+
+		try {
+			tickBehaviour(src, proxy, entry, fl, was, onGround, takeOff, landed);
+		} catch (Throwable t) {
+			EntityMorphClient.LOGGER.debug("Behaviour animation failed for {}", proxy.getClass().getSimpleName(), t);
+		}
 
 		if (ci.jumpTicks() != null && ci.jumpDuration() != null) {
 			try {

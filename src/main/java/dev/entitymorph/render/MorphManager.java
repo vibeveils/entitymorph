@@ -181,7 +181,7 @@ public final class MorphManager {
 			} catch (Throwable t) {
 				EntityMorphClient.LOGGER.debug("Shoulder appearance failed", t);
 			}
-			sp = new ShoulderProxy(created, key, e, player);
+			sp = new ShoulderProxy(created, key, look, player);
 			SHOULDERS.put(slot, sp);
 			SHOULDER_BY_ENTITY.put(created, sp);
 		}
@@ -385,18 +385,20 @@ public final class MorphManager {
 			} catch (Throwable t) {
 				EntityMorphClient.LOGGER.debug("Morph sync failed", t);
 			}
+			MorphEntry entry = MorphConfig.isActive() ? MorphConfig.get(src.getUUID()) : null;
 			if (DragonAnimator.isDragon(proxy)) {
 				DragonAnimator.tick(src, proxy);
 			} else {
-				MobAnimator.tick(src, proxy);
+				MobAnimator.tick(src, proxy, entry);
 			}
+			if (Appearance.hasFlag(entry, Appearance.SMOKE)) blazeSmoke(src);
 		}
 		for (ShoulderProxy sp : SHOULDERS.values()) {
 			Entity holder = sp.holder.get();
 			if (holder == null || holder.isRemoved()) continue;
 			try {
 				// Sitting on a shoulder: animate as if standing on the ground, flap when the player is airborne.
-				MobAnimator.tick(holder, sp.entity);
+				MobAnimator.tick(holder, sp.entity, sp.entry);
 			} catch (Throwable t) {
 				EntityMorphClient.LOGGER.debug("Shoulder animation failed", t);
 			}
@@ -439,6 +441,16 @@ public final class MorphManager {
 		return ok;
 	}
 
+	/** Blaze-style smoke around the real entity (proxies never tick, so they never make their own). */
+	private static void blazeSmoke(Entity src) {
+		var level = src.level();
+		var random = src.getRandom();
+		for (int i = 0; i < 2; i++) {
+			level.addParticle(net.minecraft.core.particles.ParticleTypes.LARGE_SMOKE,
+					src.getRandomX(0.5), src.getRandomY(), src.getRandomZ(0.5), 0.0, 0.0, 0.0);
+		}
+	}
+
 	private static void applyBaby(Entity e, boolean baby) {
 		if (!baby) return;
 		try {
@@ -448,6 +460,9 @@ public final class MorphManager {
 			}
 			Method m = findMethod(e.getClass(), "setBaby", boolean.class);
 			if (m != null) m.invoke(e, true);
+			// Armor stands have no babies, but "small" is the same idea (and isBaby() reports it).
+			Method small = findMethod(e.getClass(), "setSmall", boolean.class);
+			if (small != null) small.invoke(e, true);
 		} catch (Throwable ignored) {
 		}
 	}
@@ -528,9 +543,12 @@ public final class MorphManager {
 			if (s.getHealth() > 0 && health <= 0) health = Math.min(1.0F, d.getMaxHealth());
 			if (d.getHealth() != health) d.setHealth(health);
 
+			Map<EquipmentSlot, ItemStack> forced = Appearance.equipmentOverrides(
+					MorphConfig.isActive() ? MorphConfig.get(src.getUUID()) : null);
 			for (EquipmentSlot slot : EquipmentSlot.values()) {
-				ItemStack want = s.getItemBySlot(slot);
-				if (d.getItemBySlot(slot) != want) {
+				ItemStack want = forced.containsKey(slot) ? forced.get(slot) : s.getItemBySlot(slot);
+				boolean differs = forced.containsKey(slot) ? !ItemStack.matches(d.getItemBySlot(slot), want) : d.getItemBySlot(slot) != want;
+				if (differs) {
 					try {
 						d.setItemSlot(slot, want);
 					} catch (Throwable ignored) {
