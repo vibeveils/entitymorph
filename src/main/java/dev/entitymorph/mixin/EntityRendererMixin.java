@@ -52,7 +52,7 @@ public abstract class EntityRendererMixin<T extends Entity, S extends EntityRend
 		Entity source = MorphManager.sourceOf(entity);
 		if (source == entity) return;
 		Entity vehicle = source.getVehicle();
-		boolean sit = vehicle != null && vehicle.shouldRiderSit();
+		boolean sit = vehicle != null && RidingPose.riderSits(vehicle);
 		if (sit) RidingPose.markPassenger(cir.getReturnValue());
 	}
 

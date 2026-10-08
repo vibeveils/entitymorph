@@ -11,6 +11,29 @@ public final class RidingPose {
 	}
 
 	private static final Map<Class<?>, Optional<Field>> FIELDS = new HashMap<>();
+	private static java.lang.reflect.@org.jspecify.annotations.Nullable Method riderSit;
+	private static boolean riderSitLooked;
+
+	/** Older versions let vehicles opt out of the sitting pose (shouldRiderSit); if it's gone, riders always sit. */
+	public static boolean riderSits(net.minecraft.world.entity.Entity vehicle) {
+		if (!riderSitLooked) {
+			riderSitLooked = true;
+			for (Class<?> k = net.minecraft.world.entity.Entity.class; k != null && riderSit == null; k = k.getSuperclass()) {
+				for (java.lang.reflect.Method m : k.getDeclaredMethods()) {
+					if (m.getName().equals("shouldRiderSit") && m.getParameterCount() == 0 && m.getReturnType() == boolean.class) {
+						m.setAccessible(true);
+						riderSit = m;
+					}
+				}
+			}
+		}
+		if (riderSit == null) return true;
+		try {
+			return (boolean) riderSit.invoke(vehicle);
+		} catch (Throwable t) {
+			return true;
+		}
+	}
 
 	public static void markPassenger(Object state) {
 		if (state == null) return;
