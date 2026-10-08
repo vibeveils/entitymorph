@@ -12,12 +12,15 @@ import net.minecraft.client.renderer.entity.state.AvatarRenderState;
 import net.minecraft.client.renderer.entity.state.EntityRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.LivingEntity;
 
 import net.fabricmc.fabric.api.client.rendering.v1.FabricRenderState;
 
 import dev.entitymorph.config.MorphEntry;
 import dev.entitymorph.render.DragonAnimator;
 import dev.entitymorph.render.MorphManager;
+import dev.entitymorph.render.MouthItemLayer;
 import dev.entitymorph.render.MorphSkins;
 
 /** Tags every extracted render state with the texture override (if any) for non-player models. */
@@ -54,5 +57,9 @@ public abstract class EntityRendererMixin<T extends Entity, S extends EntityRend
 			if (Math.abs(s - 1.0F) > 1.0E-3F) scale = s;
 		}
 		((FabricRenderState) state).setData(MorphSkins.MODEL_SCALE, scale);
+
+		if (entity.getType() == EntityTypes.WOLF && entity instanceof LivingEntity living) {
+			MouthItemLayer.extract(living, (FabricRenderState) state);
+		}
 	}
 }
